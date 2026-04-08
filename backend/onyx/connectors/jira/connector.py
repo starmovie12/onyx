@@ -453,6 +453,10 @@ class JiraConnector(
     CheckpointedConnectorWithPermSync[JiraConnectorCheckpoint],
     SlimConnectorWithPermSync,
 ):
+    # Subclasses can override this to change the source type for indexed documents
+    # and EE permission group prefixes without duplicating any caching logic.
+    _source: DocumentSource = DocumentSource.JIRA
+
     def __init__(
         self,
         jira_base_url: str,
@@ -520,6 +524,7 @@ class JiraConnector(
                 jira_client=self.jira_client,
                 jira_project=project_key,
                 add_prefix=add_prefix,
+                source=self._source,
             )
         return self._project_permissions_cache[cache_key]
 
