@@ -2053,8 +2053,23 @@ export interface JiraConfig {
   jql_query?: string;
 }
 
-// Extends JiraConfig to avoid duplication; add JSM-specific fields here if they diverge.
-export interface JiraServiceManagementConfig extends JiraConfig {}
+// NOTE: JSM intentionally does NOT extend JiraConfig.
+// The standard Jira connector form sends `jira_project_url`, but the JSM
+// connector form (and the JiraConnector backend __init__) expects `jira_base_url`.
+// Extending JiraConfig would silently inherit the wrong field name, causing a
+// type mismatch between form data and the config object stored in the database.
+export interface JiraServiceManagementConfig {
+  /** Base URL of the Jira instance, e.g. https://your-domain.atlassian.net */
+  jira_base_url: string;
+  /** Optional project key to limit indexing to a single JSM project. */
+  project_key?: string;
+  /** User emails whose comments should be excluded from indexing. */
+  comment_email_blacklist?: string[];
+  /** Custom JQL query to filter issues (no time filters or ORDER BY). */
+  jql_query?: string;
+  /** Whether a scoped OAuth token is being used. */
+  scoped_token?: boolean;
+}
 
 export interface SalesforceConfig {
   requested_objects?: string[];
