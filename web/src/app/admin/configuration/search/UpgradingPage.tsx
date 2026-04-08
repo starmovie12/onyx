@@ -7,12 +7,15 @@ import {
   FailedConnectorIndexingStatus,
   ValidStatuses,
 } from "@/lib/types";
-import Text from "@/components/ui/text";
+import { Text } from "@opal/components";
+import { markdown } from "@opal/utils";
+import Spacer from "@/refresh-components/Spacer";
 import Title from "@/components/ui/title";
 import Button from "@/refresh-components/buttons/Button";
 import { Button as OpalButton } from "@opal/components";
 import { useMemo, useState } from "react";
 import useSWR, { mutate } from "swr";
+import { SWR_KEYS } from "@/lib/swr-keys";
 import { ReindexingProgressTable } from "../../../../components/embedding/ReindexingProgressTable";
 import { ErrorCallout } from "@/components/ErrorCallout";
 import {
@@ -36,7 +39,7 @@ export default function UpgradingPage({
 
   const { data: connectors, isLoading: isLoadingConnectors } = useSWR<
     Connector<any>[]
-  >(vectorDbEnabled ? "/api/manage/connector" : null, errorHandlingFetcher, {
+  >(vectorDbEnabled ? SWR_KEYS.connector : null, errorHandlingFetcher, {
     refreshInterval: 5000,
   });
 
@@ -67,7 +70,7 @@ export default function UpgradingPage({
       method: "POST",
     });
     if (response.ok) {
-      mutate("/api/search-settings/get-secondary-search-settings");
+      mutate(SWR_KEYS.secondarySearchSettings);
     } else {
       alert(
         `Failed to cancel embedding model update - ${await response.text()}`
@@ -199,45 +202,30 @@ export default function UpgradingPage({
                     />
                   )}
 
-                  <Text className="my-4">
-                    {futureEmbeddingModel.switchover_type === "active_only" ? (
-                      <>
-                        The table below shows the re-indexing progress of active
-                        (non-paused) connectors. Once all active connectors have
-                        been re-indexed successfully, the new model will be used
-                        for all search queries. Paused connectors will continue
-                        to be indexed in the background but won&apos;t block the
-                        switchover. Until then, we will use the old model so
-                        that no downtime is necessary during this transition.
-                        <br />
-                        Note: User file re-indexing progress is not shown. You
-                        will see this page until all active connectors are
-                        re-indexed!
-                      </>
-                    ) : (
-                      <>
-                        The table below shows the re-indexing progress of all
-                        existing connectors. Once all connectors have been
-                        re-indexed successfully, the new model will be used for
-                        all search queries. Until then, we will use the old
-                        model so that no downtime is necessary during this
-                        transition.
-                        <br />
-                        Note: User file re-indexing progress is not shown. You
-                        will see this page until all user files are re-indexed!
-                      </>
-                    )}
+                  <Spacer rem={1} />
+                  <Text as="p">
+                    {futureEmbeddingModel.switchover_type === "active_only"
+                      ? markdown(
+                          "The table below shows the re-indexing progress of active (non-paused) connectors. Once all active connectors have been re-indexed successfully, the new model will be used for all search queries. Paused connectors will continue to be indexed in the background but won't block the switchover. Until then, we will use the old model so that no downtime is necessary during this transition.\nNote: User file re-indexing progress is not shown. You will see this page until all active connectors are re-indexed!"
+                        )
+                      : markdown(
+                          "The table below shows the re-indexing progress of all existing connectors. Once all connectors have been re-indexed successfully, the new model will be used for all search queries. Until then, we will use the old model so that no downtime is necessary during this transition.\nNote: User file re-indexing progress is not shown. You will see this page until all user files are re-indexed!"
+                        )}
                   </Text>
+                  <Spacer rem={1} />
 
                   {sortedReindexingProgress ? (
                     <>
                       {futureEmbeddingModel.switchover_type === "active_only" &&
                         !hasVisibleReindexingProgress && (
-                          <Text className="text-text-700 mt-4">
-                            All connectors are currently paused, so none are
-                            blocking the switchover. Paused connectors will keep
-                            re-indexing in the background.
-                          </Text>
+                          <>
+                            <Spacer rem={1} />
+                            <Text as="p">
+                              All connectors are currently paused, so none are
+                              blocking the switchover. Paused connectors will
+                              keep re-indexing in the background.
+                            </Text>
+                          </>
                         )}
                       {hasVisibleReindexingProgress && (
                         <ReindexingProgressTable

@@ -1,9 +1,10 @@
 "use client";
 
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 import { useContext } from "react";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import { SettingsContext } from "@/providers/SettingsProvider";
+import { SWR_KEYS } from "@/lib/swr-keys";
 
 export interface MinimalUserGroupSnapshot {
   id: number;
@@ -15,20 +16,34 @@ export interface MinimalUserGroupSnapshot {
 
 export default function useShareableGroups() {
   const combinedSettings = useContext(SettingsContext);
+  const settingsLoading = combinedSettings?.settingsLoading ?? false;
   const isPaidEnterpriseFeaturesEnabled =
-    combinedSettings && combinedSettings.enterpriseSettings !== null;
+    !settingsLoading &&
+    combinedSettings &&
+    combinedSettings.enterpriseSettings !== null;
 
-  const { data, error, mutate, isLoading } = useSWR<MinimalUserGroupSnapshot[]>(
-    isPaidEnterpriseFeaturesEnabled ? "/api/manage/user-groups/minimal" : null,
+  const { data, error, isLoading } = useSWR<MinimalUserGroupSnapshot[]>(
+    isPaidEnterpriseFeaturesEnabled ? SWR_KEYS.shareableGroups : null,
     errorHandlingFetcher
   );
+
+  const refreshShareableGroups = () => mutate(SWR_KEYS.shareableGroups);
+
+  if (settingsLoading) {
+    return {
+      data: undefined,
+      isLoading: true,
+      error: undefined,
+      refreshShareableGroups,
+    };
+  }
 
   if (!isPaidEnterpriseFeaturesEnabled) {
     return {
       data: [],
       isLoading: false,
       error: undefined,
-      refreshShareableGroups: () => {},
+      refreshShareableGroups,
     };
   }
 
@@ -36,6 +51,6 @@ export default function useShareableGroups() {
     data,
     isLoading,
     error,
-    refreshShareableGroups: mutate,
+    refreshShareableGroups,
   };
 }

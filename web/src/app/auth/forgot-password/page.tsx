@@ -3,10 +3,11 @@ import React, { useState } from "react";
 import { forgotPassword } from "./utils";
 import AuthFlowContainer from "@/components/auth/AuthFlowContainer";
 import Title from "@/components/ui/title";
-import Text from "@/components/ui/text";
+import { Text } from "@opal/components";
+import { markdown } from "@opal/utils";
+import Spacer from "@/refresh-components/Spacer";
 import Link from "next/link";
 import { Button } from "@opal/components";
-import { Disabled } from "@opal/core";
 import { Form, Formik } from "formik";
 import * as Yup from "yup";
 import { TextFormField } from "@/components/Field";
@@ -64,21 +65,18 @@ const ForgotPasswordPage: React.FC = () => {
               />
 
               <div className="flex">
-                <Disabled disabled={isSubmitting}>
-                  <Button type="submit" width="full">
-                    Reset Password
-                  </Button>
-                </Disabled>
+                <Button disabled={isSubmitting} type="submit" width="full">
+                  Reset Password
+                </Button>
               </div>
             </Form>
           )}
         </Formik>
+        <Spacer rem={1} />
         <div className="flex">
-          <Text className="mt-4 mx-auto">
-            <Link href="/auth/login" className="text-link font-medium">
-              Back to Login
-            </Link>
-          </Text>
+          <div className="mx-auto">
+            <Text as="p">{markdown("[Back to Login](/auth/login)")}</Text>
+          </div>
         </div>
       </div>
     </AuthFlowContainer>

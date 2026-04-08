@@ -2,6 +2,7 @@
 
 import { errorHandlingFetcher, RedirectError } from "@/lib/fetcher";
 import useSWR from "swr";
+import { SWR_KEYS } from "@/lib/swr-keys";
 import Modal from "@/refresh-components/Modal";
 import { useCallback, useEffect, useState, useRef } from "react";
 import { getSecondsUntilExpiration } from "@/lib/time";
@@ -17,7 +18,7 @@ import { getExtensionContext } from "@/lib/extension/utils";
 
 export default function AppHealthBanner() {
   const router = useRouter();
-  const { error } = useSWR("/api/health", errorHandlingFetcher);
+  const { error } = useSWR(SWR_KEYS.health, errorHandlingFetcher);
   const [expired, setExpired] = useState(false);
   const [showLoggedOutModal, setShowLoggedOutModal] = useState(false);
   const pathname = usePathname();
@@ -26,13 +27,13 @@ export default function AppHealthBanner() {
 
   const { user, mutateUser, userError } = useCurrentUser();
 
-  // Handle 403 errors from the /api/me endpoint
+  // Handle 403 errors from the /api/me endpoint.
+  // Skip entirely on auth pages — the user isn't logged in yet, so there's
+  // nothing to "log out" of and hitting /auth/logout just creates noise.
   useEffect(() => {
-    if (userError && userError.status === 403) {
+    if (userError && userError.status === 403 && !pathname?.includes("/auth")) {
       logout().then(() => {
-        if (!pathname?.includes("/auth")) {
-          setShowLoggedOutModal(true);
-        }
+        setShowLoggedOutModal(true);
       });
     }
   }, [userError, pathname]);

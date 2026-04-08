@@ -35,6 +35,20 @@ export function getXYearsAgo(yearsAgo: number) {
   return yearsAgoDate;
 }
 
+export function normalizeDate(date: Date): Date {
+  const normalizedDate = new Date(date);
+  normalizedDate.setHours(0, 0, 0, 0);
+  return normalizedDate;
+}
+
+export function isAfterDate(date: Date, maxDate: Date): boolean {
+  return normalizeDate(date).getTime() > normalizeDate(maxDate).getTime();
+}
+
+export function isDateInFuture(date: Date): boolean {
+  return isAfterDate(date, new Date());
+}
+
 export const timestampToDateString = (timestamp: string) => {
   const date = new Date(timestamp);
   const year = date.getFullYear();
@@ -145,6 +159,31 @@ export const formatDateShort = (dateStr: string | null | undefined): string => {
     year: "numeric",
   });
 };
+
+/**
+ * Format an ISO timestamp as "YYYY/MM/DD HH:MM:SS" (24-hour, local time).
+ * Intended for log displays where full precision is needed.
+ */
+export function formatDateTimeLog(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * Format an ISO timestamp as "HH:MM:SS" (24-hour, local time).
+ * Intended for compact time-only displays.
+ */
+export function formatTimeOnly(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
 
 export function formatMmDdYyyy(d: string): string {
   const date = new Date(d);

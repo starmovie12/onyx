@@ -7,7 +7,6 @@ import InputTypeIn from "@/refresh-components/inputs/InputTypeIn";
 import InputTextArea from "@/refresh-components/inputs/InputTextArea";
 import Text from "@/refresh-components/texts/Text";
 import { Button } from "@opal/components";
-import { Disabled } from "@opal/core";
 import CharacterCount from "@/refresh-components/CharacterCount";
 import Separator from "@/refresh-components/Separator";
 import TextSeparator from "@/refresh-components/TextSeparator";
@@ -101,20 +100,31 @@ function MemoryItem({
               setIsFocused(false);
               void onBlur(originalIndex);
             }}
-            rows={3}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                textareaRef.current?.blur();
+              }
+            }}
+            rows={1}
+            autoResize
+            maxRows={3}
             maxLength={MAX_MEMORY_LENGTH}
             resizable={false}
             className="bg-background-tint-01 hover:bg-background-tint-00 focus-within:bg-background-tint-00"
           />
-          <Disabled disabled={!memory.content.trim() && memory.isNew}>
-            <Button
-              prominence="tertiary"
-              icon={SvgMinusCircle}
-              onClick={() => void onRemove(originalIndex)}
-              aria-label="Remove Line"
-              tooltip="Remove Line"
-            />
-          </Disabled>
+          <Button
+            disabled={!memory.content.trim() && memory.isNew}
+            prominence="tertiary"
+            icon={SvgMinusCircle}
+            onClick={() => void onRemove(originalIndex)}
+            aria-label="Remove Line"
+            tooltip="Remove Line"
+          />
         </Section>
         <div
           className={isFocused ? "visible" : "invisible h-0 overflow-hidden"}
@@ -149,6 +159,7 @@ interface MemoriesModalProps {
   initialTargetMemoryId?: number | null;
   initialTargetIndex?: number | null;
   highlightOnOpen?: boolean;
+  focusNewLine?: boolean;
 }
 
 export default function MemoriesModal({
@@ -158,6 +169,7 @@ export default function MemoriesModal({
   initialTargetMemoryId,
   initialTargetIndex,
   highlightOnOpen = false,
+  focusNewLine = false,
 }: MemoriesModalProps) {
   const close = useModalClose(onClose);
   const [focusMemoryId, setFocusMemoryId] = useState<number | null>(null);
@@ -231,6 +243,19 @@ export default function MemoriesModal({
     onNotify: (message, type) => toast[type](message),
   });
 
+  // Always start with an empty card; optionally focus it (View/Add button)
+  const hasAddedEmptyRef = useRef(false);
+  useEffect(() => {
+    if (hasAddedEmptyRef.current) return;
+    hasAddedEmptyRef.current = true;
+
+    const id = handleAddMemory();
+    if (id !== null && focusNewLine) {
+      setFocusMemoryId(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onAddLine = () => {
     const id = handleAddMemory();
     if (id !== null) {
@@ -240,7 +265,7 @@ export default function MemoriesModal({
 
   return (
     <Modal open onOpenChange={(open) => !open && close?.()}>
-      <Modal.Content width="sm" height="lg">
+      <Modal.Content width="sm" height="lg" position="top">
         <Modal.Header
           icon={SvgAddLines}
           title="Memory"
@@ -256,20 +281,19 @@ export default function MemoriesModal({
               showClearButton={false}
               className="w-full !bg-transparent !border-transparent [&:is(:hover,:active,:focus,:focus-within)]:!bg-background-neutral-00 [&:is(:hover)]:!border-border-01 [&:is(:focus,:focus-within)]:!shadow-none"
             />
-            <Disabled disabled={!canAddMemory}>
-              <Button
-                prominence="tertiary"
-                onClick={onAddLine}
-                rightIcon={SvgPlusCircle}
-                title={
-                  !canAddMemory
-                    ? `Maximum of ${MAX_MEMORY_COUNT} memories reached`
-                    : undefined
-                }
-              >
-                Add Line
-              </Button>
-            </Disabled>
+            <Button
+              disabled={!canAddMemory}
+              prominence="tertiary"
+              onClick={onAddLine}
+              rightIcon={SvgPlusCircle}
+              title={
+                !canAddMemory
+                  ? `Maximum of ${MAX_MEMORY_COUNT} memories reached`
+                  : undefined
+              }
+            >
+              Add Line
+            </Button>
           </Section>
         </Modal.Header>
 

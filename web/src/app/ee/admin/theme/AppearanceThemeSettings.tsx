@@ -10,7 +10,6 @@ import Switch from "@/refresh-components/inputs/Switch";
 import CharacterCount from "@/refresh-components/CharacterCount";
 import InputImage from "@/refresh-components/inputs/InputImage";
 import { Button } from "@opal/components";
-import { Disabled } from "@opal/core";
 import { useFormikContext } from "formik";
 import {
   forwardRef,
@@ -26,6 +25,7 @@ import { SvgEdit } from "@opal/icons";
 interface AppearanceThemeSettingsProps {
   selectedLogo: File | null;
   setSelectedLogo: (file: File | null) => void;
+  logoVersion: number;
   charLimits: {
     application_name: number;
     custom_greeting_message: number;
@@ -45,7 +45,7 @@ export const AppearanceThemeSettings = forwardRef<
   AppearanceThemeSettingsRef,
   AppearanceThemeSettingsProps
 >(function AppearanceThemeSettings(
-  { selectedLogo, setSelectedLogo, charLimits },
+  { selectedLogo, setSelectedLogo, logoVersion, charLimits },
   ref
 ) {
   const { values, errors, setFieldValue } = useFormikContext<any>();
@@ -174,15 +174,15 @@ export const AppearanceThemeSettings = forwardRef<
     };
   }, [logoObjectUrl]);
 
-  const getLogoSrc = () => {
+  const logoSrc = useMemo(() => {
     if (logoObjectUrl) {
       return logoObjectUrl;
     }
     if (values.use_custom_logo) {
-      return `/api/enterprise-settings/logo?u=${Date.now()}`;
+      return `/api/enterprise-settings/logo?v=${logoVersion}`;
     }
     return undefined;
-  };
+  }, [logoObjectUrl, values.use_custom_logo, logoVersion]);
 
   // Determine which tabs should be enabled
   const hasLogo = Boolean(selectedLogo || values.use_custom_logo);
@@ -302,7 +302,7 @@ export const AppearanceThemeSettings = forwardRef<
           <FormField.Label>Application Logo</FormField.Label>
           <FormField.Control>
             <InputImage
-              src={getLogoSrc()}
+              src={logoSrc}
               onEdit={handleLogoEdit}
               onDrop={(file) => {
                 setSelectedLogo(file);
@@ -313,15 +313,14 @@ export const AppearanceThemeSettings = forwardRef<
             />
           </FormField.Control>
           <div className="mt-2 w-full justify-center items-center flex">
-            <Disabled disabled={!hasLogo}>
-              <Button
-                prominence="secondary"
-                onClick={handleLogoEdit}
-                icon={SvgEdit}
-              >
-                Update
-              </Button>
-            </Disabled>
+            <Button
+              disabled={!hasLogo}
+              prominence="secondary"
+              onClick={handleLogoEdit}
+              icon={SvgEdit}
+            >
+              Update
+            </Button>
           </div>
         </FormField>
       </div>
@@ -341,7 +340,7 @@ export const AppearanceThemeSettings = forwardRef<
         greeting_message={
           values.custom_greeting_message || "Welcome to Acme Chat"
         }
-        logoSrc={getLogoSrc()}
+        logoSrc={logoSrc}
         highlightTarget={highlightTarget}
       />
 

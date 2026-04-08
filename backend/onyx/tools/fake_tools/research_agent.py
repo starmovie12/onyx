@@ -1,3 +1,4 @@
+import queue
 import time
 from collections.abc import Callable
 from typing import Any
@@ -708,7 +709,6 @@ def run_research_agent_calls(
 
 
 if __name__ == "__main__":
-    from queue import Queue
     from uuid import uuid4
 
     from onyx.chat.chat_state import ChatStateContainer
@@ -736,7 +736,7 @@ if __name__ == "__main__":
             llm.config.model_name, llm.config.model_provider
         )
 
-        persona = get_default_behavior_persona(db_session)
+        persona = get_default_behavior_persona(db_session, eager_load_for_tools=True)
         if persona is None:
             raise ValueError("No default persona found")
 
@@ -744,8 +744,8 @@ if __name__ == "__main__":
         if user is None:
             raise ValueError("No users found in database. Please create a user first.")
 
-        bus: Queue[Packet] = Queue()
-        emitter = Emitter(bus)
+        emitter_queue: queue.Queue = queue.Queue()
+        emitter = Emitter(merged_queue=emitter_queue)
         state_container = ChatStateContainer()
 
         tool_dict = construct_tools(
@@ -792,4 +792,4 @@ if __name__ == "__main__":
             print(result.intermediate_report)
             print("=" * 80)
             print(f"Citations: {result.citation_mapping}")
-            print(f"Total packets emitted: {bus.qsize()}")
+            print(f"Total packets emitted: {emitter_queue.qsize()}")

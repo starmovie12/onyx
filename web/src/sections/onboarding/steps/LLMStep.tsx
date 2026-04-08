@@ -19,11 +19,11 @@ import { Disabled } from "@opal/core";
 import { ProviderIcon } from "@/app/admin/configuration/llm/ProviderIcon";
 import { SvgCheckCircle, SvgCpu, SvgExternalLink } from "@opal/icons";
 import { ContentAction } from "@opal/layouts";
+import { useLLMProviderOptions } from "@/lib/hooks/useLLMProviderOptions";
 
 type LLMStepProps = {
   state: OnboardingState;
   actions: OnboardingActions;
-  llmDescriptors: WellKnownLLMProviderDescriptor[];
   disabled?: boolean;
 };
 
@@ -92,10 +92,10 @@ const StackedProviderIcons = ({ providers }: StackedProviderIconsProps) => {
 const LLMStepInner = ({
   state: onboardingState,
   actions: onboardingActions,
-  llmDescriptors,
   disabled,
 }: LLMStepProps) => {
-  const isLoading = !llmDescriptors || llmDescriptors.length === 0;
+  const { llmProviderOptions, isLoading } = useLLMProviderOptions();
+  const llmDescriptors = llmProviderOptions ?? [];
 
   const [selectedProvider, setSelectedProvider] =
     useState<SelectedProvider | null>(null);
@@ -137,15 +137,14 @@ const LLMStepInner = ({
             variant="section"
             paddingVariant="lg"
             rightChildren={
-              <Disabled disabled={disabled}>
-                <Button
-                  prominence="tertiary"
-                  rightIcon={SvgExternalLink}
-                  href="/admin/configuration/llm"
-                >
-                  View in Admin Panel
-                </Button>
-              </Disabled>
+              <Button
+                disabled={disabled}
+                prominence="tertiary"
+                rightIcon={SvgExternalLink}
+                href="/admin/configuration/llm"
+              >
+                View in Admin Panel
+              </Button>
             }
           />
           <Separator />
@@ -163,12 +162,12 @@ const LLMStepInner = ({
               <>
                 {/* Render the selected provider form */}
                 {selectedProvider &&
+                  isModalOpen &&
                   getOnboardingForm({
                     llmDescriptor: selectedProvider.llmDescriptor,
                     isCustomProvider: selectedProvider.isCustomProvider,
                     onboardingState,
                     onboardingActions,
-                    open: isModalOpen,
                     onOpenChange: handleModalClose,
                   })}
 

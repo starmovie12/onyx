@@ -1,5 +1,6 @@
 "use client";
 
+import { markdown } from "@opal/utils";
 import Link from "next/link";
 import Modal from "@/refresh-components/Modal";
 import Text from "@/refresh-components/texts/Text";
@@ -10,7 +11,7 @@ import Separator from "@/refresh-components/Separator";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CopyIconButton from "@/refresh-components/buttons/CopyIconButton";
 import { Button } from "@opal/components";
-import { Disabled } from "@opal/core";
+import { Hoverable } from "@opal/core";
 import { MethodSpec, ToolSnapshot } from "@/lib/tools/interfaces";
 import {
   validateToolDefinition,
@@ -238,54 +239,44 @@ function FormContent({
         <InputLayouts.Vertical
           name="definition"
           title="OpenAPI Schema Definition"
-          subDescription={
-            <>
-              Specify an OpenAPI schema that defines the APIs you want to make
-              available as part of this action. Learn more about{" "}
-              <span className="inline-flex">
-                <SimpleTooltip
-                  tooltip={`Open ${DOCS_ADMINS_PATH}/actions/openapi`}
-                  side="top"
-                >
-                  <Link
-                    href={`${DOCS_ADMINS_PATH}/actions/openapi`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    OpenAPI actions
-                  </Link>
-                </SimpleTooltip>
-              </span>
-              .
-            </>
-          }
+          subDescription={markdown(
+            `Specify an OpenAPI schema that defines the APIs you want to make available as part of this action. Learn more about [OpenAPI actions](${DOCS_ADMINS_PATH}/actions/openapi).`
+          )}
         >
-          <div className="group/DefinitionTextAreaField relative w-full">
-            {values.definition.trim() && (
-              <div className="invisible group-hover/DefinitionTextAreaField:visible absolute z-[100000] top-2 right-2 bg-background-tint-00">
-                <CopyIconButton
-                  prominence="tertiary"
-                  size="sm"
-                  getCopyText={() => values.definition}
-                  tooltip="Copy definition"
-                />
-                <Button
-                  prominence="tertiary"
-                  size="sm"
-                  icon={SvgBracketCurly}
-                  tooltip="Format definition"
-                  onClick={handleFormat}
-                />
-              </div>
-            )}
-            <InputTextAreaField
-              name="definition"
-              rows={14}
-              placeholder="Enter your OpenAPI schema here"
-              className="font-main-ui-mono"
-            />
-          </div>
+          <Hoverable.Root group="definitionField" widthVariant="full">
+            <div className="relative w-full">
+              {values.definition.trim() && (
+                <div className="absolute z-[100000] top-2 right-2 bg-background-tint-00">
+                  <Hoverable.Item
+                    group="definitionField"
+                    variant="opacity-on-hover"
+                  >
+                    <div className="flex">
+                      <CopyIconButton
+                        prominence="tertiary"
+                        size="sm"
+                        getCopyText={() => values.definition}
+                        tooltip="Copy definition"
+                      />
+                      <Button
+                        prominence="tertiary"
+                        size="sm"
+                        icon={SvgBracketCurly}
+                        tooltip="Format definition"
+                        onClick={handleFormat}
+                      />
+                    </div>
+                  </Hoverable.Item>
+                </div>
+              )}
+              <InputTextAreaField
+                name="definition"
+                rows={14}
+                placeholder="Enter your OpenAPI schema here"
+                className="font-main-ui-mono"
+              />
+            </div>
+          </Hoverable.Root>
         </InputLayouts.Vertical>
 
         <Separator noPadding />
@@ -375,29 +366,31 @@ function FormContent({
                   onDisconnectTool(existingTool);
                 }}
               />
-              <Disabled disabled={!onEditAuthentication}>
-                <Button
-                  prominence="secondary"
-                  type="button"
-                  onClick={handleEditAuthenticationClick}
-                >
-                  Edit Configs
-                </Button>
-              </Disabled>
+              <Button
+                disabled={!onEditAuthentication}
+                prominence="secondary"
+                type="button"
+                onClick={handleEditAuthenticationClick}
+              >
+                Edit Configs
+              </Button>
             </Section>
           </Section>
         )}
       </Modal.Body>
 
       <Modal.Footer>
-        <Disabled disabled={isSubmitting}>
-          <Button prominence="secondary" type="button" onClick={handleClose}>
-            Cancel
-          </Button>
-        </Disabled>
-        <Disabled disabled={isSubmitting || !dirty}>
-          <Button type="submit">{primaryButtonLabel}</Button>
-        </Disabled>
+        <Button
+          disabled={isSubmitting}
+          prominence="secondary"
+          type="button"
+          onClick={handleClose}
+        >
+          Cancel
+        </Button>
+        <Button disabled={isSubmitting || !dirty} type="submit">
+          {primaryButtonLabel}
+        </Button>
       </Modal.Footer>
     </Form>
   );

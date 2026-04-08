@@ -48,6 +48,7 @@ from sqlalchemy.types import LargeBinary
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy import PrimaryKeyConstraint
 
+from onyx.db.enums import AccountType
 from onyx.auth.schemas import UserRole
 from onyx.configs.constants import (
     ANONYMOUS_USER_UUID,
@@ -78,6 +79,8 @@ from onyx.db.enums import (
     MCPAuthenticationPerformer,
     MCPTransport,
     MCPServerStatus,
+    Permission,
+    GrantSource,
     LLMModelFlowType,
     ThemePreference,
     DefaultAppMode,
@@ -302,6 +305,12 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, native_enum=False, default=UserRole.BASIC)
     )
+    account_type: Mapped[AccountType] = mapped_column(
+        Enum(AccountType, native_enum=False),
+        nullable=False,
+        default=AccountType.STANDARD,
+        server_default="STANDARD",
+    )
 
     """
     Preferences probably should be in a separate table at some point, but for now
@@ -345,6 +354,13 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
 
     pinned_assistants: Mapped[list[int] | None] = mapped_column(
         postgresql.JSONB(), nullable=True, default=None
+    )
+
+    effective_permissions: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB(),
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
     )
 
     oidc_expiry: Mapped[datetime.datetime] = mapped_column(
@@ -2645,6 +2661,15 @@ class ChatMessage(Base):
         nullable=True,
     )
 
+    # For multi-model turns: the user message points to which assistant response
+    # was selected as the preferred one to continue the conversation with.
+    preferred_response_id: Mapped[int | None] = mapped_column(
+        ForeignKey("chat_message.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # The display name of the model that generated this assistant message
+    model_display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+
     # What does this message contain
     reasoning_tokens: Mapped[str | None] = mapped_column(Text, nullable=True)
     message: Mapped[str] = mapped_column(Text)
@@ -2709,6 +2734,12 @@ class ChatMessage(Base):
     latest_child_message: Mapped["ChatMessage | None"] = relationship(
         "ChatMessage",
         foreign_keys=[latest_child_message_id],
+        remote_side="ChatMessage.id",
+    )
+
+    preferred_response: Mapped["ChatMessage | None"] = relationship(
+        "ChatMessage",
+        foreign_keys=[preferred_response_id],
         remote_side="ChatMessage.id",
     )
 
@@ -3114,8 +3145,6 @@ class VoiceProvider(Base):
     is_default_stt: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_default_tts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    deleted: Mapped[bool] = mapped_column(Boolean, default=False)
-
     time_created: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -3467,9 +3496,9 @@ class Persona(Base):
     builtin_persona: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Featured personas are highlighted in the UI
-    featured: Mapped[bool] = mapped_column(Boolean, default=False)
-    # controls whether the persona is available to be selected by users
-    is_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    # controls whether the persona is listed in user-facing agent lists
+    is_listed: Mapped[bool] = mapped_column(Boolean, default=True)
     # controls the ordering of personas in the UI
     # higher priority personas are displayed first, ties are resolved by the ID,
     # where lower value IDs (e.g. created earlier) are displayed first
@@ -3971,6 +4000,8 @@ class SamlAccount(Base):
 class User__UserGroup(Base):
     __tablename__ = "user__user_group"
 
+    __table_args__ = (Index("ix_user__user_group_user_id", "user_id"),)
+
     is_curator: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     user_group_id: Mapped[int] = mapped_column(
@@ -3979,6 +4010,53 @@ class User__UserGroup(Base):
     user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), primary_key=True, nullable=True
     )
+
+
+class PermissionGrant(Base):
+    __tablename__ = "permission_grant"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id", "permission", name="uq_permission_grant_group_permission"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("user_group.id", ondelete="CASCADE"), nullable=False
+    )
+    permission: Mapped[Permission] = mapped_column(
+        Enum(
+            Permission,
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+    )
+    grant_source: Mapped[GrantSource] = mapped_column(
+        Enum(GrantSource, native_enum=False), nullable=False
+    )
+    granted_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    granted_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    group: Mapped["UserGroup"] = relationship(
+        "UserGroup", back_populates="permission_grants"
+    )
+
+    @validates("permission")
+    def _validate_permission(self, _key: str, value: Permission) -> Permission:
+        if value in Permission.IMPLIED:
+            raise ValueError(
+                f"{value!r} is an implied permission and cannot be granted directly"
+            )
+        return value
 
 
 class UserGroup__ConnectorCredentialPair(Base):
@@ -4075,6 +4153,8 @@ class UserGroup(Base):
     is_up_for_deletion: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    # whether this is a default group (e.g. "Basic", "Admins") that cannot be deleted
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Last time a user updated this user group
     time_last_modified_by_user: Mapped[datetime.datetime] = mapped_column(
@@ -4117,6 +4197,9 @@ class UserGroup(Base):
     # MCP servers accessible to this user group
     accessible_mcp_servers: Mapped[list["MCPServer"]] = relationship(
         "MCPServer", secondary="mcp_server__user_group", back_populates="user_groups"
+    )
+    permission_grants: Mapped[list["PermissionGrant"]] = relationship(
+        "PermissionGrant", back_populates="group", cascade="all, delete-orphan"
     )
 
 

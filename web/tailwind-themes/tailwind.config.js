@@ -65,17 +65,19 @@ module.exports = {
         "neutral-10": "var(--neutral-10) 5%",
       },
       screens: {
+        sm: "724px",
+        md: "912px",
+        lg: "1232px",
         "2xl": "1420px",
         "3xl": "1700px",
         "4xl": "2000px",
-        mobile: { max: "767px" },
-        desktop: "768px",
+        mobile: { max: "724px" },
         tall: { raw: "(min-height: 800px)" },
         short: { raw: "(max-height: 799px)" },
         "very-short": { raw: "(max-height: 600px)" },
       },
       fontFamily: {
-        sans: ["Hanken Grotesk", "var(--font-inter)", "sans-serif"],
+        sans: ["Hanken Grotesk", "sans-serif"],
         hanken: ["Hanken Grotesk", "sans-serif"],
       },
       width: {

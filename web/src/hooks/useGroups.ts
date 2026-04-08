@@ -1,10 +1,11 @@
 "use client";
 
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import { UserGroup } from "@/lib/types";
 import { useContext } from "react";
 import { SettingsContext } from "@/providers/SettingsProvider";
+import { SWR_KEYS } from "@/lib/swr-keys";
 
 /**
  * Fetches all user groups in the organization.
@@ -37,21 +38,34 @@ import { SettingsContext } from "@/providers/SettingsProvider";
  */
 export default function useGroups() {
   const combinedSettings = useContext(SettingsContext);
+  const settingsLoading = combinedSettings?.settingsLoading ?? false;
   const isPaidEnterpriseFeaturesEnabled =
-    combinedSettings && combinedSettings.enterpriseSettings !== null;
+    !settingsLoading &&
+    combinedSettings &&
+    combinedSettings.enterpriseSettings !== null;
 
-  const { data, error, mutate, isLoading } = useSWR<UserGroup[]>(
-    isPaidEnterpriseFeaturesEnabled ? "/api/manage/admin/user-group" : null,
+  const { data, error, isLoading } = useSWR<UserGroup[]>(
+    isPaidEnterpriseFeaturesEnabled ? SWR_KEYS.adminUserGroups : null,
     errorHandlingFetcher
   );
 
-  // If enterprise features are not enabled, return empty array
+  const refreshGroups = () => mutate(SWR_KEYS.adminUserGroups);
+
+  if (settingsLoading) {
+    return {
+      data: undefined,
+      isLoading: true,
+      error: undefined,
+      refreshGroups,
+    };
+  }
+
   if (!isPaidEnterpriseFeaturesEnabled) {
     return {
       data: [],
       isLoading: false,
       error: undefined,
-      refreshGroups: () => {},
+      refreshGroups,
     };
   }
 
@@ -59,6 +73,6 @@ export default function useGroups() {
     data,
     isLoading,
     error,
-    refreshGroups: mutate,
+    refreshGroups,
   };
 }

@@ -13,6 +13,7 @@ from redis.lock import Lock as RedisLock
 from ee.onyx.server.tenants.provisioning import setup_tenant
 from ee.onyx.server.tenants.schema_management import create_schema_if_not_exists
 from ee.onyx.server.tenants.schema_management import get_current_alembic_version
+from ee.onyx.server.tenants.schema_management import run_alembic_migrations
 from onyx.background.celery.apps.app_base import task_logger
 from onyx.configs.app_configs import TARGET_AVAILABLE_TENANTS
 from onyx.configs.constants import ONYX_CLOUD_TENANT_ID
@@ -25,10 +26,14 @@ from onyx.redis.redis_pool import get_redis_client
 from shared_configs.configs import MULTI_TENANT
 from shared_configs.configs import TENANT_ID_PREFIX
 
-# Soft time limit for tenant pre-provisioning tasks (in seconds)
-_TENANT_PROVISIONING_SOFT_TIME_LIMIT = 60 * 5  # 5 minutes
-# Hard time limit for tenant pre-provisioning tasks (in seconds)
-_TENANT_PROVISIONING_TIME_LIMIT = 60 * 10  # 10 minutes
+# Maximum tenants to provision in a single task run.
+# Each tenant takes ~80s (alembic migrations), so 15 tenants ≈ 20 minutes.
+_MAX_TENANTS_PER_RUN = 15
+
+# Time limits sized for worst-case: provisioning up to _MAX_TENANTS_PER_RUN new tenants
+# (~90s each) plus migrating up to TARGET_AVAILABLE_TENANTS pool tenants (~90s each).
+_TENANT_PROVISIONING_SOFT_TIME_LIMIT = 60 * 40  # 40 minutes
+_TENANT_PROVISIONING_TIME_LIMIT = 60 * 45  # 45 minutes
 
 
 @shared_task(
@@ -85,9 +90,27 @@ def check_available_tenants(self: Task) -> None:  # noqa: ARG001
             f"To provision: {tenants_to_provision}"
         )
 
-        # just provision one tenant each time we run this ... increase if needed.
-        if tenants_to_provision > 0:
-            pre_provision_tenant()
+        batch_size = min(tenants_to_provision, _MAX_TENANTS_PER_RUN)
+        if batch_size < tenants_to_provision:
+            task_logger.info(
+                f"Capping batch to {batch_size} (need {tenants_to_provision}, will catch up next cycle)"
+            )
+
+        provisioned = 0
+        for i in range(batch_size):
+            task_logger.info(f"Provisioning tenant {i + 1}/{batch_size}")
+            try:
+                if pre_provision_tenant():
+                    provisioned += 1
+            except Exception:
+                task_logger.exception(
+                    f"Failed to provision tenant {i + 1}/{batch_size}, continuing with remaining tenants"
+                )
+
+        task_logger.info(f"Provisioning complete: {provisioned}/{batch_size} succeeded")
+
+        # Migrate any pool tenants that were provisioned before a new migration was deployed
+        _migrate_stale_pool_tenants()
 
     except Exception:
         task_logger.exception("Error in check_available_tenants task")
@@ -101,11 +124,53 @@ def check_available_tenants(self: Task) -> None:  # noqa: ARG001
             )
 
 
-def pre_provision_tenant() -> None:
+def _migrate_stale_pool_tenants() -> None:
+    """
+    Run alembic upgrade head on all pool tenants. Since alembic upgrade head is
+    idempotent, tenants already at head are a fast no-op. This ensures pool
+    tenants are always current so that signup doesn't hit schema mismatches
+    (e.g. missing columns added after the tenant was pre-provisioned).
+    """
+    with get_session_with_shared_schema() as db_session:
+        pool_tenants = db_session.query(AvailableTenant).all()
+        tenant_ids = [t.tenant_id for t in pool_tenants]
+
+    if not tenant_ids:
+        return
+
+    task_logger.info(
+        f"Checking {len(tenant_ids)} pool tenant(s) for pending migrations"
+    )
+
+    for tenant_id in tenant_ids:
+        try:
+            run_alembic_migrations(tenant_id)
+            new_version = get_current_alembic_version(tenant_id)
+            with get_session_with_shared_schema() as db_session:
+                tenant = (
+                    db_session.query(AvailableTenant)
+                    .filter_by(tenant_id=tenant_id)
+                    .first()
+                )
+                if tenant and tenant.alembic_version != new_version:
+                    task_logger.info(
+                        f"Migrated pool tenant {tenant_id}: {tenant.alembic_version} -> {new_version}"
+                    )
+                    tenant.alembic_version = new_version
+                    db_session.commit()
+        except Exception:
+            task_logger.exception(
+                f"Failed to migrate pool tenant {tenant_id}, skipping"
+            )
+
+
+def pre_provision_tenant() -> bool:
     """
     Pre-provision a new tenant and store it in the NewAvailableTenant table.
     This function fully sets up the tenant with all necessary configurations,
     so it's ready to be assigned to a user immediately.
+
+    Returns True if a tenant was successfully provisioned, False otherwise.
     """
     # The MULTI_TENANT check is now done at the caller level (check_available_tenants)
     # rather than inside this function
@@ -118,10 +183,10 @@ def pre_provision_tenant() -> None:
 
     # Allow multiple pre-provisioning tasks to run, but ensure they don't overlap
     if not lock_provision.acquire(blocking=False):
-        task_logger.debug(
-            "Skipping pre_provision_tenant task because it is already running"
+        task_logger.warning(
+            "Skipping pre_provision_tenant — could not acquire provision lock"
         )
-        return
+        return False
 
     tenant_id: str | None = None
     try:
@@ -161,6 +226,7 @@ def pre_provision_tenant() -> None:
                 db_session.add(new_tenant)
                 db_session.commit()
                 task_logger.info(f"Successfully pre-provisioned tenant: {tenant_id}")
+                return True
             except Exception:
                 db_session.rollback()
                 task_logger.error(
@@ -184,6 +250,7 @@ def pre_provision_tenant() -> None:
                 asyncio.run(rollback_tenant_provisioning(tenant_id))
             except Exception:
                 task_logger.exception(f"Error during rollback for tenant: {tenant_id}")
+        return False
     finally:
         try:
             lock_provision.release()

@@ -1,6 +1,9 @@
 "use client";
 
+import type { RichStr, WithoutStyles } from "@opal/types";
+import { resolveStr } from "@opal/components/text/InlineMarkdown";
 import Text from "@/refresh-components/texts/Text";
+import Separator from "@/refresh-components/Separator";
 import { SvgXOctagon, SvgAlertCircle } from "@opal/icons";
 import { useField, useFormikContext } from "formik";
 import { Section } from "@/layouts/general-layouts";
@@ -12,9 +15,9 @@ interface OrientationLayoutProps {
   disabled?: boolean;
   nonInteractive?: boolean;
   children?: React.ReactNode;
-  title: string;
-  description?: string;
-  optional?: boolean;
+  title: string | RichStr;
+  description?: string | RichStr;
+  suffix?: "optional" | (string & {});
   sizePreset?: "main-content" | "main-ui";
 }
 
@@ -41,7 +44,7 @@ interface OrientationLayoutProps {
  * ```
  */
 export interface VerticalLayoutProps extends OrientationLayoutProps {
-  subDescription?: React.ReactNode;
+  subDescription?: string | RichStr;
 }
 function VerticalInputLayout({
   name,
@@ -51,7 +54,7 @@ function VerticalInputLayout({
   subDescription,
   title,
   description,
-  optional,
+  suffix,
   sizePreset = "main-content",
 }: VerticalLayoutProps) {
   const content = (
@@ -59,7 +62,7 @@ function VerticalInputLayout({
       <Content
         title={title}
         description={description}
-        optional={optional}
+        suffix={suffix}
         sizePreset={sizePreset}
         variant="section"
       />
@@ -67,7 +70,7 @@ function VerticalInputLayout({
       {name && <ErrorLayout name={name} />}
       {subDescription && (
         <Text secondaryBody text03>
-          {subDescription}
+          {resolveStr(subDescription)}
         </Text>
       )}
     </Section>
@@ -126,7 +129,7 @@ function HorizontalInputLayout({
   center,
   title,
   description,
-  optional,
+  suffix,
   sizePreset = "main-content",
 }: HorizontalLayoutProps) {
   const content = (
@@ -140,7 +143,7 @@ function HorizontalInputLayout({
           <Content
             title={title}
             description={description}
-            optional={optional}
+            suffix={suffix}
             sizePreset={sizePreset}
             variant="section"
             widthVariant="full"
@@ -227,9 +230,27 @@ function ErrorTextLayout({ children, type = "error" }: ErrorTextLayoutProps) {
   );
 }
 
+/**
+ * FieldSeparator - A horizontal rule with inline padding, used to visually separate field groups.
+ */
+function FieldSeparator() {
+  return <Separator noPadding className="p-2" />;
+}
+
+/**
+ * FieldPadder -  Wraps a field in standard horizontal + vertical padding (`p-2 w-full`).
+ */
+type FieldPadderProps = WithoutStyles<React.HTMLAttributes<HTMLDivElement>>;
+function FieldPadder(props: FieldPadderProps) {
+  return <div {...props} className="p-2 w-full" />;
+}
+
 export {
   VerticalInputLayout as Vertical,
   HorizontalInputLayout as Horizontal,
   ErrorLayout as Error,
   ErrorTextLayout,
+  FieldSeparator,
+  FieldPadder,
+  type FieldPadderProps,
 };

@@ -10,7 +10,6 @@ import React, {
 } from "react";
 import LineItem from "@/refresh-components/buttons/LineItem";
 import { MinimalPersonaSnapshot } from "@/app/admin/agents/interfaces";
-import LLMPopover from "@/refresh-components/popovers/LLMPopover";
 import { InputPrompt } from "@/app/app/interfaces";
 import { FilterManager, LlmManager, useFederatedConnectors } from "@/lib/hooks";
 import usePromptShortcuts from "@/hooks/usePromptShortcuts";
@@ -20,7 +19,8 @@ import { MinimalOnyxDocument } from "@/lib/search/interfaces";
 import { ChatState } from "@/app/app/interfaces";
 import { useForcedTools } from "@/lib/hooks/useForcedTools";
 import useAppFocus from "@/hooks/useAppFocus";
-import { cn, isImageFile } from "@/lib/utils";
+import { getPastedFilesIfNoText } from "@/lib/clipboard";
+import { cn } from "@/lib/utils";
 import { Disabled } from "@opal/core";
 import { useUser } from "@/providers/UserProvider";
 import {
@@ -300,20 +300,10 @@ const AppInputBar = React.memo(
     }, [showFiles, currentMessageFiles]);
 
     function handlePaste(event: React.ClipboardEvent) {
-      const items = event.clipboardData?.items;
-      if (items) {
-        const pastedFiles = [];
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          if (item && item.kind === "file") {
-            const file = item.getAsFile();
-            if (file) pastedFiles.push(file);
-          }
-        }
-        if (pastedFiles.length > 0) {
-          event.preventDefault();
-          handleFileUpload(pastedFiles);
-        }
+      const pastedFiles = getPastedFilesIfNoText(event.clipboardData);
+      if (pastedFiles.length > 0) {
+        event.preventDefault();
+        handleFileUpload(pastedFiles);
       }
     }
 
@@ -423,11 +413,6 @@ const AppInputBar = React.memo(
       return currentMessageFiles.length > 1;
     }, [currentMessageFiles]);
 
-    const hasImageFiles = useMemo(
-      () => currentMessageFiles.some((f) => isImageFile(f.name)),
-      [currentMessageFiles]
-    );
-
     // Check if the agent has search tools available (internal search or web search)
     // AND if deep research is globally enabled in admin settings
     const showDeepResearch = useMemo(() => {
@@ -520,14 +505,13 @@ const AppInputBar = React.memo(
             }}
             handleUploadChange={handleUploadChange}
             trigger={(open) => (
-              <Disabled disabled={disabled}>
-                <Button
-                  icon={SvgPlusCircle}
-                  tooltip="Attach Files"
-                  interaction={open ? "hover" : "rest"}
-                  prominence="tertiary"
-                />
-              </Disabled>
+              <Button
+                disabled={disabled}
+                icon={SvgPlusCircle}
+                tooltip="Attach Files"
+                interaction={open ? "hover" : "rest"}
+                prominence="tertiary"
+              />
             )}
             selectedFileIds={currentMessageFiles.map((f) => f.id)}
           />
@@ -549,38 +533,36 @@ const AppInputBar = React.memo(
               />
             )}
             {onToggleTabReading ? (
-              <Disabled disabled={disabled}>
-                <SelectButton
-                  icon={SvgGlobe}
-                  onClick={onToggleTabReading}
-                  state={tabReadingEnabled ? "selected" : "empty"}
-                >
-                  {tabReadingEnabled
-                    ? currentTabUrl
-                      ? (() => {
-                          try {
-                            return new URL(currentTabUrl).hostname;
-                          } catch {
-                            return currentTabUrl;
-                          }
-                        })()
-                      : "Reading tab..."
-                    : "Read this tab"}
-                </SelectButton>
-              </Disabled>
+              <SelectButton
+                disabled={disabled}
+                icon={SvgGlobe}
+                onClick={onToggleTabReading}
+                state={tabReadingEnabled ? "selected" : "empty"}
+              >
+                {tabReadingEnabled
+                  ? currentTabUrl
+                    ? (() => {
+                        try {
+                          return new URL(currentTabUrl).hostname;
+                        } catch {
+                          return currentTabUrl;
+                        }
+                      })()
+                    : "Reading tab..."
+                  : "Read this tab"}
+              </SelectButton>
             ) : (
               showDeepResearch && (
-                <Disabled disabled={disabled}>
-                  <SelectButton
-                    variant="select-light"
-                    icon={SvgHourglass}
-                    onClick={toggleDeepResearch}
-                    state={deepResearchEnabled ? "selected" : "empty"}
-                    foldable={!deepResearchEnabled}
-                  >
-                    Deep Research
-                  </SelectButton>
-                </Disabled>
+                <SelectButton
+                  disabled={disabled}
+                  variant="select-light"
+                  icon={SvgHourglass}
+                  onClick={toggleDeepResearch}
+                  state={deepResearchEnabled ? "selected" : "empty"}
+                  foldable={!deepResearchEnabled}
+                >
+                  Deep Research
+                </SelectButton>
               )
             )}
 
@@ -615,16 +597,6 @@ const AppInputBar = React.memo(
 
         {/* Bottom right controls */}
         <div className="flex flex-row items-center gap-1">
-          <div
-            data-testid="AppInputBar/llm-popover-trigger"
-            className={cn(controlsLoading && "invisible")}
-          >
-            <LLMPopover
-              llmManager={llmManager}
-              requiresImageInput={hasImageFiles}
-              disabled={disabled}
-            />
-          </div>
           {showMicButton &&
             (sttEnabled ? (
               <MicrophoneButton
@@ -646,17 +618,16 @@ const AppInputBar = React.memo(
                 onAudioLevel={setAudioLevel}
               />
             ) : (
-              <Disabled disabled>
-                <Button
-                  icon={SvgMicrophone}
-                  aria-label="Set up voice"
-                  prominence="tertiary"
-                  tooltip="Voice not configured. Set up in admin settings."
-                />
-              </Disabled>
+              <Button
+                disabled
+                icon={SvgMicrophone}
+                aria-label="Set up voice"
+                prominence="tertiary"
+                tooltip="Voice not configured. Set up in admin settings."
+              />
             ))}
 
-          <Disabled
+          <Button
             disabled={
               (chatState === "input" &&
                 !isVoicePlaybackControllable &&
@@ -664,28 +635,25 @@ const AppInputBar = React.memo(
               hasUploadingFiles ||
               isClassifying
             }
-          >
-            <Button
-              id="onyx-chat-input-send-button"
-              icon={
-                isClassifying
-                  ? SimpleLoader
-                  : chatState === "streaming" || isVoicePlaybackControllable
-                    ? SvgStop
-                    : SvgArrowUp
+            id="onyx-chat-input-send-button"
+            icon={
+              isClassifying
+                ? SimpleLoader
+                : chatState === "streaming" || isVoicePlaybackControllable
+                  ? SvgStop
+                  : SvgArrowUp
+            }
+            onClick={() => {
+              if (chatState == "streaming") {
+                stopTTS({ manual: true });
+                stopGenerating();
+              } else if (isVoicePlaybackControllable) {
+                stopTTS({ manual: true });
+              } else if (message) {
+                submitMessage(message);
               }
-              onClick={() => {
-                if (chatState == "streaming") {
-                  stopTTS({ manual: true });
-                  stopGenerating();
-                } else if (isVoicePlaybackControllable) {
-                  stopTTS({ manual: true });
-                } else if (message) {
-                  submitMessage(message);
-                }
-              }}
-            />
-          </Disabled>
+            }}
+          />
         </div>
       </div>
     );
@@ -859,29 +827,25 @@ const AppInputBar = React.memo(
 
             {isSearchMode && (
               <Section flexDirection="row" width="fit" gap={0}>
-                <Disabled disabled={!message || isClassifying}>
-                  <Button
-                    icon={SvgX}
-                    onClick={() => setMessage("")}
-                    prominence="tertiary"
-                  />
-                </Disabled>
-                <Disabled
+                <Button
+                  disabled={!message || isClassifying}
+                  icon={SvgX}
+                  onClick={() => setMessage("")}
+                  prominence="tertiary"
+                />
+                <Button
                   disabled={!message || isClassifying || hasUploadingFiles}
-                >
-                  <Button
-                    id="onyx-chat-input-send-button"
-                    icon={isClassifying ? SimpleLoader : SvgSearch}
-                    onClick={() => {
-                      if (chatState == "streaming") {
-                        stopGenerating();
-                      } else if (message) {
-                        submitMessage(message);
-                      }
-                    }}
-                    prominence="tertiary"
-                  />
-                </Disabled>
+                  id="onyx-chat-input-send-button"
+                  icon={isClassifying ? SimpleLoader : SvgSearch}
+                  onClick={() => {
+                    if (chatState == "streaming") {
+                      stopGenerating();
+                    } else if (message) {
+                      submitMessage(message);
+                    }
+                  }}
+                  prominence="tertiary"
+                />
                 <Spacer horizontal rem={0.25} />
               </Section>
             )}

@@ -80,7 +80,6 @@ from onyx.auth.pat import get_hashed_pat_from_request
 from onyx.auth.schemas import AuthBackend
 from onyx.auth.schemas import UserCreate
 from onyx.auth.schemas import UserRole
-from onyx.auth.schemas import UserUpdateWithRole
 from onyx.configs.app_configs import AUTH_BACKEND
 from onyx.configs.app_configs import AUTH_COOKIE_EXPIRE_TIME_SECONDS
 from onyx.configs.app_configs import AUTH_TYPE
@@ -120,12 +119,15 @@ from onyx.db.engine.async_sql_engine import get_async_session
 from onyx.db.engine.async_sql_engine import get_async_session_context_manager
 from onyx.db.engine.sql_engine import get_session_with_current_tenant
 from onyx.db.engine.sql_engine import get_session_with_tenant
+from onyx.db.enums import AccountType
 from onyx.db.models import AccessToken
 from onyx.db.models import OAuthAccount
 from onyx.db.models import Persona
 from onyx.db.models import User
 from onyx.db.pat import fetch_user_for_pat
+from onyx.db.users import assign_user_to_default_groups__no_commit
 from onyx.db.users import get_user_by_email
+from onyx.db.users import is_limited_user
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import log_onyx_error
 from onyx.error_handling.exceptions import onyx_error_to_json_response
@@ -135,6 +137,8 @@ from onyx.redis.redis_pool import retrieve_ws_token_data
 from onyx.server.settings.store import load_settings
 from onyx.server.utils import BasicAuthenticationError
 from onyx.utils.logger import setup_logger
+from onyx.utils.telemetry import mt_cloud_alias
+from onyx.utils.telemetry import mt_cloud_get_anon_id
 from onyx.utils.telemetry import mt_cloud_identify
 from onyx.utils.telemetry import mt_cloud_telemetry
 from onyx.utils.telemetry import optional_telemetry
@@ -251,18 +255,12 @@ def verify_email_is_invited(email: str) -> None:
     whitelist = get_invited_users()
 
     if not email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"reason": "Email must be specified"},
-        )
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Email must be specified")
 
     try:
         email_info = validate_email(email, check_deliverability=False)
     except EmailUndeliverableError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"reason": "Email is not valid"},
-        )
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Email is not valid")
 
     for email_whitelist in whitelist:
         try:
@@ -279,12 +277,9 @@ def verify_email_is_invited(email: str) -> None:
         if email_info.normalized.lower() == email_info_whitelist.normalized.lower():
             return
 
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail={
-            "code": REGISTER_INVITE_ONLY_CODE,
-            "reason": "This workspace is invite-only. Please ask your admin to invite you.",
-        },
+    raise OnyxError(
+        OnyxErrorCode.UNAUTHORIZED,
+        "This workspace is invite-only. Please ask your admin to invite you.",
     )
 
 
@@ -294,48 +289,47 @@ def verify_email_in_whitelist(email: str, tenant_id: str) -> None:
             verify_email_is_invited(email)
 
 
-def verify_email_domain(email: str) -> None:
+def verify_email_domain(email: str, *, is_registration: bool = False) -> None:
     if email.count("@") != 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email is not valid",
-        )
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Email is not valid")
 
     local_part, domain = email.split("@")
     domain = domain.lower()
+    local_part = local_part.lower()
 
     if AUTH_TYPE == AuthType.CLOUD:
         # Normalize googlemail.com to gmail.com (they deliver to the same inbox)
         if domain == "googlemail.com":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"reason": "Please use @gmail.com instead of @googlemail.com."},
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT,
+                "Please use @gmail.com instead of @googlemail.com.",
+            )
+
+        # Only block dotted Gmail on new signups — existing users must still be
+        # able to sign in with the address they originally registered with.
+        if is_registration and domain == "gmail.com" and "." in local_part:
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT,
+                "Gmail addresses with '.' are not allowed. Please use your base email address.",
             )
 
         if "+" in local_part and domain != "onyx.app":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "reason": "Email addresses with '+' are not allowed. Please use your base email address."
-                },
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT,
+                "Email addresses with '+' are not allowed. Please use your base email address.",
             )
 
     # Check if email uses a disposable/temporary domain
     if is_disposable_email(email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "reason": "Disposable email addresses are not allowed. Please use a permanent email address."
-            },
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            "Disposable email addresses are not allowed. Please use a permanent email address.",
         )
 
     # Check domain whitelist if configured
     if VALID_EMAIL_DOMAINS:
         if domain not in VALID_EMAIL_DOMAINS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email domain is not valid",
-            )
+            raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Email domain is not valid")
 
 
 def enforce_seat_limit(db_session: Session, seats_needed: int = 1) -> None:
@@ -351,7 +345,7 @@ def enforce_seat_limit(db_session: Session, seats_needed: int = 1) -> None:
     )(db_session, seats_needed=seats_needed)
 
     if result is not None and not result.available:
-        raise HTTPException(status_code=402, detail=result.error_message)
+        raise OnyxError(OnyxErrorCode.SEAT_LIMIT_EXCEEDED, result.error_message)
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
@@ -404,10 +398,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                     captcha_token or "", expected_action="signup"
                 )
             except CaptchaVerificationError as e:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={"reason": str(e)},
-                )
+                raise OnyxError(OnyxErrorCode.INVALID_INPUT, str(e))
 
         # We verify the password here to make sure it's valid before we proceed
         await self.validate_password(
@@ -417,13 +408,10 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         # Check for disposable emails BEFORE provisioning tenant
         # This prevents creating tenants for throwaway email addresses
         try:
-            verify_email_domain(user_create.email)
-        except HTTPException as e:
+            verify_email_domain(user_create.email, is_registration=True)
+        except OnyxError as e:
             # Log blocked disposable email attempts
-            if (
-                e.status_code == status.HTTP_400_BAD_REQUEST
-                and "Disposable email" in str(e.detail)
-            ):
+            if "Disposable email" in e.detail:
                 domain = (
                     user_create.email.split("@")[-1]
                     if "@" in user_create.email
@@ -514,18 +502,21 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                             user = user_by_session
 
                     if (
-                        user.role.is_web_login()
+                        user.account_type.is_web_login()
                         or not isinstance(user_create, UserCreate)
-                        or not user_create.role.is_web_login()
+                        or not user_create.account_type.is_web_login()
                     ):
                         raise exceptions.UserAlreadyExists()
 
-                    user_update = UserUpdateWithRole(
-                        password=user_create.password,
-                        is_verified=user_create.is_verified,
-                        role=user_create.role,
-                    )
-                    user = await self.update(user_update, user)
+                    # Cache id before expire — accessing attrs on an expired
+                    # object triggers a sync lazy-load which raises MissingGreenlet
+                    # in this async context.
+                    user_id = user.id
+                    self._upgrade_user_to_standard__sync(user_id, user_create)
+                    # Expire so the async session re-fetches the row updated by
+                    # the sync session above.
+                    self.user_db.session.expire(user)
+                    user = await self.user_db.get(user_id)  # type: ignore[assignment]
                 except exceptions.UserAlreadyExists:
                     user = await self.get_by_email(user_create.email)
 
@@ -539,18 +530,21 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
                     # Handle case where user has used product outside of web and is now creating an account through web
                     if (
-                        user.role.is_web_login()
+                        user.account_type.is_web_login()
                         or not isinstance(user_create, UserCreate)
-                        or not user_create.role.is_web_login()
+                        or not user_create.account_type.is_web_login()
                     ):
                         raise exceptions.UserAlreadyExists()
 
-                    user_update = UserUpdateWithRole(
-                        password=user_create.password,
-                        is_verified=user_create.is_verified,
-                        role=user_create.role,
-                    )
-                    user = await self.update(user_update, user)
+                    # Cache id before expire — accessing attrs on an expired
+                    # object triggers a sync lazy-load which raises MissingGreenlet
+                    # in this async context.
+                    user_id = user.id
+                    self._upgrade_user_to_standard__sync(user_id, user_create)
+                    # Expire so the async session re-fetches the row updated by
+                    # the sync session above.
+                    self.user_db.session.expire(user)
+                    user = await self.user_db.get(user_id)  # type: ignore[assignment]
                 if user_created:
                     await self._assign_default_pinned_assistants(user, db_session)
                 remove_user_from_invited_users(user_create.email)
@@ -567,9 +561,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         result = await db_session.execute(
             select(Persona.id)
             .where(
-                Persona.featured.is_(True),
+                Persona.is_featured.is_(True),
                 Persona.is_public.is_(True),
-                Persona.is_visible.is_(True),
+                Persona.is_listed.is_(True),
                 Persona.deleted.is_(False),
             )
             .order_by(
@@ -586,6 +580,38 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             {"pinned_assistants": default_persona_ids},
         )
         user.pinned_assistants = default_persona_ids
+
+    def _upgrade_user_to_standard__sync(
+        self,
+        user_id: uuid.UUID,
+        user_create: UserCreate,
+    ) -> None:
+        """Upgrade a non-web user to STANDARD and assign default groups atomically.
+
+        All writes happen in a single sync transaction so neither the field
+        update nor the group assignment is visible without the other.
+        """
+        with get_session_with_current_tenant() as sync_db:
+            sync_user = sync_db.query(User).filter(User.id == user_id).first()  # type: ignore[arg-type]
+            if sync_user:
+                sync_user.hashed_password = self.password_helper.hash(
+                    user_create.password
+                )
+                sync_user.is_verified = user_create.is_verified or False
+                sync_user.role = user_create.role
+                sync_user.account_type = AccountType.STANDARD
+                assign_user_to_default_groups__no_commit(
+                    sync_db,
+                    sync_user,
+                    is_admin=(user_create.role == UserRole.ADMIN),
+                )
+                sync_db.commit()
+            else:
+                logger.warning(
+                    "User %s not found in sync session during upgrade to standard; "
+                    "skipping upgrade",
+                    user_id,
+                )
 
     async def validate_password(self, password: str, _: schemas.UC | models.UP) -> None:
         # Validate password according to configurable security policy (defined via environment variables)
@@ -697,6 +723,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                         raise exceptions.UserNotExists()
 
                 except exceptions.UserNotExists:
+                    verify_email_domain(account_email, is_registration=True)
+
                     # Check seat availability before creating (single-tenant only)
                     with get_session_with_current_tenant() as sync_db:
                         enforce_seat_limit(sync_db)
@@ -706,6 +734,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                         "email": account_email,
                         "hashed_password": self.password_helper.hash(password),
                         "is_verified": is_verified_by_default,
+                        "account_type": AccountType.STANDARD,
                     }
 
                     user = await self.user_db.create(user_dict)
@@ -738,7 +767,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 )
 
             # Handle case where user has used product outside of web and is now creating an account through web
-            if not user.role.is_web_login():
+            if not user.account_type.is_web_login():
                 # We must use the existing user in the session if it matches
                 # the user we just got by email/oauth. Note that this only applies
                 # to multi-tenant, due to the overwriting of the user_db
@@ -755,14 +784,25 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                     with get_session_with_current_tenant() as sync_db:
                         enforce_seat_limit(sync_db)
 
-                await self.user_db.update(
-                    user,
-                    {
-                        "is_verified": is_verified_by_default,
-                        "role": UserRole.BASIC,
-                        **({"is_active": True} if not user.is_active else {}),
-                    },
-                )
+                # Upgrade the user and assign default groups in a single
+                # transaction so neither change is visible without the other.
+                was_inactive = not user.is_active
+                with get_session_with_current_tenant() as sync_db:
+                    sync_user = sync_db.query(User).filter(User.id == user.id).first()  # type: ignore[arg-type]
+                    if sync_user:
+                        sync_user.is_verified = is_verified_by_default
+                        sync_user.role = UserRole.BASIC
+                        sync_user.account_type = AccountType.STANDARD
+                        if was_inactive:
+                            sync_user.is_active = True
+                        assign_user_to_default_groups__no_commit(sync_db, sync_user)
+                        sync_db.commit()
+
+                # Refresh the async user object so downstream code
+                # (e.g. oidc_expiry check) sees the updated fields.
+                self.user_db.session.expire(user)
+                user = await self.user_db.get(user.id)
+                assert user is not None
 
             # this is needed if an organization goes from `TRACK_EXTERNAL_IDP_EXPIRY=true` to `false`
             # otherwise, the oidc expiry will always be old, and the user will never be able to login
@@ -795,6 +835,12 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             logger.exception("Error deleting anonymous user cookie")
 
         tenant_id = CURRENT_TENANT_ID_CONTEXTVAR.get()
+
+        # Link the anonymous PostHog session to the identified user so that
+        # pre-login session recordings and events merge into one person profile.
+        if anon_id := mt_cloud_get_anon_id(request):
+            mt_cloud_alias(distinct_id=str(user.id), anonymous_id=anon_id)
+
         mt_cloud_identify(
             distinct_id=str(user.id),
             properties={"email": user.email, "tenant_id": tenant_id},
@@ -818,6 +864,11 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             user_count = await get_user_count()
             logger.debug(f"Current tenant user count: {user_count}")
 
+            # Link the anonymous PostHog session to the identified user so
+            # that pre-signup session recordings merge into one person profile.
+            if anon_id := mt_cloud_get_anon_id(request):
+                mt_cloud_alias(distinct_id=str(user.id), anonymous_id=anon_id)
+
             # Ensure a PostHog person profile exists for this user.
             mt_cloud_identify(
                 distinct_id=str(user.id),
@@ -837,6 +888,16 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                     event=MilestoneRecordType.TENANT_CREATED,
                 )
 
+            # Assign user to the appropriate default group (Admin or Basic).
+            # Must happen inside the try block while tenant context is active,
+            # otherwise get_session_with_current_tenant() targets the wrong schema.
+            is_admin = user_count == 1 or user.email in get_default_admin_user_emails()
+            with get_session_with_current_tenant() as db_session:
+                assign_user_to_default_groups__no_commit(
+                    db_session, user, is_admin=is_admin
+                )
+                db_session.commit()
+
         finally:
             CURRENT_TENANT_ID_CONTEXTVAR.reset(token)
 
@@ -846,9 +907,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             attribute="get_marketing_posthog_cookie_name",
             noop_return_value=None,
         )
-        parse_marketing_cookie = fetch_ee_implementation_or_noop(
+        parse_posthog_cookie = fetch_ee_implementation_or_noop(
             module="onyx.utils.posthog_client",
-            attribute="parse_marketing_cookie",
+            attribute="parse_posthog_cookie",
             noop_return_value=None,
         )
         capture_and_sync_with_alternate_posthog = fetch_ee_implementation_or_noop(
@@ -862,7 +923,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             and user_count is not None
             and (marketing_cookie_name := get_marketing_posthog_cookie_name())
             and (marketing_cookie_value := request.cookies.get(marketing_cookie_name))
-            and (parsed_cookie := parse_marketing_cookie(marketing_cookie_value))
+            and (parsed_cookie := parse_posthog_cookie(marketing_cookie_value))
         ):
             marketing_anonymous_id = parsed_cookie["distinct_id"]
 
@@ -976,7 +1037,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 self.password_helper.hash(credentials.password)
                 return None
 
-            if not user.role.is_web_login():
+            if not user.account_type.is_web_login():
                 raise BasicAuthenticationError(
                     detail="NO_WEB_LOGIN_AND_HAS_NO_PASSWORD",
                 )
@@ -1472,7 +1533,7 @@ async def _get_or_create_user_from_jwt(
         if not user.is_active:
             logger.warning("Inactive user %s attempted JWT login; skipping", email)
             return None
-        if not user.role.is_web_login():
+        if not user.account_type.is_web_login():
             raise exceptions.UserNotExists()
     except exceptions.UserNotExists:
         logger.info("Provisioning user %s from JWT login", email)
@@ -1493,7 +1554,7 @@ async def _get_or_create_user_from_jwt(
                     email,
                 )
                 return None
-            if not user.role.is_web_login():
+            if not user.account_type.is_web_login():
                 logger.warning(
                     "Non-web-login user %s attempted JWT login during provisioning race; skipping",
                     email,
@@ -1555,6 +1616,7 @@ def get_anonymous_user() -> User:
         is_verified=True,
         is_superuser=False,
         role=UserRole.LIMITED,
+        account_type=AccountType.ANONYMOUS,
         use_memories=False,
         enable_memory_tool=False,
     )
@@ -1620,9 +1682,9 @@ async def current_user(
 ) -> User:
     user = await double_check_user(user)
 
-    if user.role == UserRole.LIMITED:
+    if is_limited_user(user):
         raise BasicAuthenticationError(
-            detail="Access denied. User role is LIMITED. BASIC or higher permissions are required.",
+            detail="Access denied. User has limited permissions.",
         )
     return user
 
@@ -1634,15 +1696,6 @@ async def current_curator_or_admin_user(
     if user.role not in allowed_roles:
         raise BasicAuthenticationError(
             detail="Access denied. User is not a curator or admin.",
-        )
-
-    return user
-
-
-async def current_admin_user(user: User = Depends(current_user)) -> User:
-    if user.role != UserRole.ADMIN:
-        raise BasicAuthenticationError(
-            detail="Access denied. User must be an admin to perform this action.",
         )
 
     return user
@@ -1756,11 +1809,11 @@ async def current_user_from_websocket(
     # Apply same checks as HTTP auth (verification, OIDC expiry, role)
     user = await double_check_user(user)
 
-    # Block LIMITED users (same as current_user)
-    if user.role == UserRole.LIMITED:
-        logger.warning(f"WS auth: user {user.email} has LIMITED role")
+    # Block limited users (same as current_user)
+    if is_limited_user(user):
+        logger.warning(f"WS auth: user {user.email} is limited")
         raise BasicAuthenticationError(
-            detail="Access denied. User role is LIMITED. BASIC or higher permissions are required.",
+            detail="Access denied. User has limited permissions.",
         )
 
     logger.debug(f"WS auth: authenticated {user.email}")
