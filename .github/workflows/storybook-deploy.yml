@@ -3,7 +3,6 @@ env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: prj_sG49mVsA25UsxIPhN2pmBJlikJZM
   VERCEL_CLI: vercel@50.14.1
-  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
 concurrency:
   group: storybook-deploy-production
@@ -48,6 +47,8 @@ jobs:
 
       - name: Deploy to Vercel (Production)
         working-directory: web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: npx --yes "$VERCEL_CLI" deploy storybook-static/ --prod --yes --token="$VERCEL_TOKEN"
 
   notify-slack-on-failure:
