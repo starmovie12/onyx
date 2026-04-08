@@ -553,6 +553,25 @@ class JiraConnector(
             )
         return self._project_permissions_cache[cache_key]
 
+    def _enrich_document(self, document: Document, issue: Issue) -> Document:
+        """Hook for subclasses to add source-specific metadata to a document.
+
+        Called once per issue after ``process_jira_issue`` returns a non-None
+        document and *before* the document is yielded to the caller.  The
+        default implementation is a no-op; subclasses (e.g.
+        JiraServiceManagementConnector) override this to attach extra fields
+        (SLA data, request type, …) without duplicating any checkpoint or
+        pagination logic.
+
+        Args:
+            document: The fully-populated Document produced by process_jira_issue.
+            issue: The raw Jira Issue object that produced the document.
+
+        Returns:
+            The (optionally mutated) Document to yield downstream.
+        """
+        return document
+
     def _is_epic(self, issue: Issue) -> bool:
         """Check if issue is an Epic."""
         issuetype = best_effort_get_field_from_issue(issue, _FIELD_ISSUETYPE)
@@ -807,6 +826,10 @@ class JiraConnector(
                     labels_to_skip=self.labels_to_skip,
                     parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
                 ):
+                    # Allow subclasses to attach source-specific metadata (e.g. SLA)
+                    # without duplicating any pagination / checkpoint logic.
+                    document = self._enrich_document(document, issue)
+
                     # Add permission information to the document if requested
                     if include_permissions:
                         document.external_access = self._get_project_permissions(
