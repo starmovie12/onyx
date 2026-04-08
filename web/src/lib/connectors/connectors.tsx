@@ -2019,13 +2019,8 @@ export interface JiraConfig {
   jql_query?: string;
 }
 
-export interface JiraServiceManagementConfig {
-  jira_base_url: string;
-  project_key?: string;
-  comment_email_blacklist?: string[];
-  jql_query?: string;
-  scoped_token?: boolean;
-}
+// Extends JiraConfig to avoid duplication; add JSM-specific fields here if they diverge.
+export interface JiraServiceManagementConfig extends JiraConfig {}
 
 export interface SalesforceConfig {
   requested_objects?: string[];
