@@ -1,1 +1,1 @@
-
+"""JSM package marker."""
