@@ -129,9 +129,7 @@ def _extract_sla_display(sla_field_value: Any) -> tuple[str | None, bool]:
     ongoing = sla_field_value.get("ongoingCycle")
     if isinstance(ongoing, dict):
         remaining = ongoing.get("remainingTime", {})
-        friendly = (
-            remaining.get("friendly") if isinstance(remaining, dict) else None
-        )
+        friendly = remaining.get("friendly") if isinstance(remaining, dict) else None
         breached = bool(ongoing.get("breached", False))
         if not friendly:
             friendly = "Breached" if breached else None
@@ -168,7 +166,7 @@ def _get_request_type(issue: Any) -> str | None:
         if rt is not None:
             return getattr(rt, "name", None) or str(rt)
         # Server/DC: sometimes stored under customfield as a dict
-        raw_fields: dict[str, Any] = getattr(issue.raw, "get", lambda *a: {})(
+        raw_fields: dict[str, Any] = getattr(issue.raw, "get", lambda *_: {})(
             "fields", {}
         )
         if isinstance(raw_fields, dict):
