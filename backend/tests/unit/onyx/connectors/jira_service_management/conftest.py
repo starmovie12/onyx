@@ -1,6 +1,7 @@
 """
 Shared fixtures for Jira Service Management unit tests.
 """
+
 from __future__ import annotations
 
 from collections.abc import Generator
