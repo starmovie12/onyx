@@ -5,16 +5,17 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 from jira import JIRA
 from jira.resources import Issue
 
+from onyx.connectors.jira.utils import JIRA_SERVER_API_VERSION
 from onyx.connectors.jira_service_management.connector import (
     JiraServiceManagementConnector,
 )
-from onyx.connectors.jira.utils import JIRA_SERVER_API_VERSION
 
 
 # ---------------------------------------------------------------------------
