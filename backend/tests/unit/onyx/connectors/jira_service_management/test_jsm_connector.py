@@ -20,21 +20,19 @@ from unittest.mock import MagicMock
 import pytest
 
 from onyx.configs.constants import DocumentSource
-from onyx.connectors.jira_service_management.connector import (
-    JiraServiceManagementConnector,
-    _extract_sla_display,
-    _get_raw_field,
-    _get_request_type,
-    _get_service_desk_id,
-)
-from onyx.connectors.models import Document, TextSection
-
+from onyx.connectors.jira_service_management.connector import _extract_sla_display
+from onyx.connectors.jira_service_management.connector import _get_raw_field
+from onyx.connectors.jira_service_management.connector import _get_request_type
+from onyx.connectors.jira_service_management.connector import _get_service_desk_id
+from onyx.connectors.jira_service_management.connector import JiraServiceManagementConnector
+from onyx.connectors.models import Document
+from onyx.connectors.models import TextSection
 from tests.unit.onyx.connectors.jira_service_management.conftest import make_mock_issue
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 def _make_doc(doc_id: str = "https://example.atlassian.net/browse/HELP-1") -> Document:
@@ -52,9 +50,9 @@ def _make_field_meta(field_id: str, name: str) -> dict[str, str]:
     return {"id": field_id, "name": name, "schema": {"type": "any"}}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 # 1. Instantiation and source attribute
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class TestInstantiation:
@@ -86,9 +84,9 @@ class TestInstantiation:
         assert jsm_connector.jira_base == "https://example.atlassian.net"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 # 2. Dynamic SLA field discovery
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class TestSLAFieldDiscovery:
@@ -171,9 +169,9 @@ class TestSLAFieldDiscovery:
         assert result["customfield_10040"] == "sla_time_to_close"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 # 3. SLA value extraction (_extract_sla_display)
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class TestExtractSLADisplay:
@@ -264,9 +262,9 @@ class TestExtractSLADisplay:
         assert breached is False
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 # 4. Document enrichment — _enrich_document hook
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class TestEnrichDocument:
@@ -383,9 +381,9 @@ class TestEnrichDocument:
         assert result is doc
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 # 5. JSM metadata helpers
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class TestJSMMetadataHelpers:
@@ -428,9 +426,9 @@ class TestJSMMetadataHelpers:
         assert result.metadata.get("jsm_service_desk_id") == "SD"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 # 6. doc_sync URL validation (P1 fix)
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class TestDocSyncURLValidation:
@@ -478,9 +476,9 @@ class TestDocSyncURLValidation:
             self._call_validate({"jira_base_url": 12345})
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 # 7. Cloud SLA format — extended edge cases
-# ═══════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class TestCloudSLAEdgeCases:
