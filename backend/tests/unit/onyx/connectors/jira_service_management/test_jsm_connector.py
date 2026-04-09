@@ -24,7 +24,9 @@ from onyx.connectors.jira_service_management.connector import _extract_sla_displ
 from onyx.connectors.jira_service_management.connector import _get_raw_field
 from onyx.connectors.jira_service_management.connector import _get_request_type
 from onyx.connectors.jira_service_management.connector import _get_service_desk_id
-from onyx.connectors.jira_service_management.connector import JiraServiceManagementConnector
+from onyx.connectors.jira_service_management.connector import (
+    JiraServiceManagementConnector,
+)
 from onyx.connectors.models import Document
 from onyx.connectors.models import TextSection
 from tests.unit.onyx.connectors.jira_service_management.conftest import make_mock_issue
