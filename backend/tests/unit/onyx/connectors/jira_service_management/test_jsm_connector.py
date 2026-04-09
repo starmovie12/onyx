@@ -12,10 +12,10 @@ Coverage targets
 * doc_sync URL validation (P1 fix)
 * Interface smoke tests (instantiation, load_credentials)
 """
+
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -58,20 +58,31 @@ def _make_field_meta(field_id: str, name: str) -> dict[str, str]:
 
 
 class TestInstantiation:
-    def test_source_attribute_is_jsm(self, jsm_connector: JiraServiceManagementConnector) -> None:
+    def test_source_attribute_is_jsm(
+        self, jsm_connector: JiraServiceManagementConnector
+    ) -> None:
         assert jsm_connector._source is DocumentSource.JIRA_SERVICE_MANAGEMENT
 
-    def test_sla_field_map_starts_as_none(self, jsm_connector: JiraServiceManagementConnector) -> None:
+    def test_sla_field_map_starts_as_none(
+        self, jsm_connector: JiraServiceManagementConnector
+    ) -> None:
         assert jsm_connector._sla_field_map is None
 
-    def test_inherits_from_jira_connector(self, jsm_connector: JiraServiceManagementConnector) -> None:
+    def test_inherits_from_jira_connector(
+        self, jsm_connector: JiraServiceManagementConnector
+    ) -> None:
         from onyx.connectors.jira.connector import JiraConnector
+
         assert isinstance(jsm_connector, JiraConnector)
 
-    def test_project_key_stored(self, jsm_connector: JiraServiceManagementConnector) -> None:
+    def test_project_key_stored(
+        self, jsm_connector: JiraServiceManagementConnector
+    ) -> None:
         assert jsm_connector.jira_project == "HELP"
 
-    def test_base_url_stored(self, jsm_connector: JiraServiceManagementConnector) -> None:
+    def test_base_url_stored(
+        self, jsm_connector: JiraServiceManagementConnector
+    ) -> None:
         assert jsm_connector.jira_base == "https://example.atlassian.net"
 
 
@@ -340,7 +351,9 @@ class TestEnrichDocument:
         jsm_connector._sla_field_map = {
             "customfield_10020": "sla_time_to_first_response",
         }
-        broken_sla = object()  # not a dict or str — will fail inside _extract_sla_display
+        broken_sla = (
+            object()
+        )  # not a dict or str — will fail inside _extract_sla_display
         issue = make_mock_issue(extra_fields={"customfield_10020": broken_sla})
         doc = _make_doc()
         # Must not raise
@@ -425,6 +438,7 @@ class TestDocSyncURLValidation:
         from ee.onyx.external_permissions.jira_service_management.doc_sync import (
             _validate_jsm_config,
         )
+
         _validate_jsm_config(config)
 
     def test_valid_https_url_passes(self) -> None:
@@ -435,26 +449,31 @@ class TestDocSyncURLValidation:
 
     def test_missing_key_raises(self) -> None:
         from onyx.connectors.exceptions import ConnectorValidationError
+
         with pytest.raises(ConnectorValidationError, match="jira_base_url"):
             self._call_validate({})
 
     def test_empty_string_raises(self) -> None:
         from onyx.connectors.exceptions import ConnectorValidationError
+
         with pytest.raises(ConnectorValidationError, match="non-empty"):
             self._call_validate({"jira_base_url": ""})
 
     def test_whitespace_only_raises(self) -> None:
         from onyx.connectors.exceptions import ConnectorValidationError
+
         with pytest.raises(ConnectorValidationError, match="non-empty"):
             self._call_validate({"jira_base_url": "   "})
 
     def test_url_without_scheme_raises(self) -> None:
         from onyx.connectors.exceptions import ConnectorValidationError
+
         with pytest.raises(ConnectorValidationError, match="http"):
             self._call_validate({"jira_base_url": "example.atlassian.net"})
 
     def test_non_string_value_raises(self) -> None:
         from onyx.connectors.exceptions import ConnectorValidationError
+
         with pytest.raises(ConnectorValidationError):
             self._call_validate({"jira_base_url": 12345})
 
