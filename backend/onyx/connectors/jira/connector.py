@@ -553,7 +553,7 @@ class JiraConnector(
             )
         return self._project_permissions_cache[cache_key]
 
-    def _enrich_document(self, document: Document, issue: Issue) -> Document:
+    def _enrich_document(self, document: Document, _issue: Issue) -> Document:
         """Hook for subclasses to add source-specific metadata to a document.
 
         Called once per issue after ``process_jira_issue`` returns a non-None
