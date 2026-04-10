@@ -175,10 +175,9 @@ def _get_request_type(issue: Any) -> str | None:
         raw_fields: dict[str, Any] = (
             issue.raw.get("fields", {}) if isinstance(issue.raw, dict) else {}
         )
-        if isinstance(raw_fields, dict):
-            for _fid, fval in raw_fields.items():
-                if isinstance(fval, dict) and fval.get("requestType"):
-                    return str(fval["requestType"].get("name", ""))
+        for _fid, fval in raw_fields.items():
+            if isinstance(fval, dict) and fval.get("requestType"):
+                return str(fval["requestType"].get("name", ""))
     except Exception:
         logger.debug(
             f"Failed to extract request type from issue {getattr(issue, 'key', '?')!r}",
@@ -278,17 +277,9 @@ class JiraServiceManagementConnector(JiraConnector):
         Returns:
             Mapping of ``{"customfield_XXXXX": "sla_<canonical_key>", ...}``
         """
-        # Fast-path: already discovered successfully.
+        # Fast-path: already discovered (successfully or permanently failed).
         if self._sla_field_map is not None:
             return self._sla_field_map
-
-        # Failure cap: stop retrying after repeated errors to avoid unbounded
-        # failing HTTP calls on persistent permission / scope problems.
-        # Setting self._sla_field_map = {} here means subsequent calls hit the
-        # fast-path (is not None) and return immediately without any counter check.
-        if self._sla_discovery_attempts >= self._MAX_SLA_DISCOVERY_ATTEMPTS:
-            self._sla_field_map = {}
-            return {}
 
         self._sla_discovery_attempts += 1
         mapping: dict[str, str] = {}
@@ -307,9 +298,10 @@ class JiraServiceManagementConnector(JiraConnector):
                             f"({field_name!r}) → {canonical_key!r}"
                         )
                         break  # one canonical key per field ID
+            # Success — cache so we never call fields() again.
+            self._sla_field_map = mapping
         except Exception:
-            remaining = self._MAX_SLA_DISCOVERY_ATTEMPTS - self._sla_discovery_attempts
-            if remaining > 0:
+            if self._sla_discovery_attempts < self._MAX_SLA_DISCOVERY_ATTEMPTS:
                 logger.error(
                     f"JSM SLA field discovery failed (attempt "
                     f"{self._sla_discovery_attempts}/{self._MAX_SLA_DISCOVERY_ATTEMPTS}) — "
@@ -319,7 +311,6 @@ class JiraServiceManagementConnector(JiraConnector):
                     exc_info=True,
                 )
                 # Do NOT cache on failure yet — allow retries up to the cap.
-                return mapping
             else:
                 logger.error(
                     f"JSM SLA field discovery failed (attempt "
@@ -331,10 +322,7 @@ class JiraServiceManagementConnector(JiraConnector):
                 # Max attempts reached — cache empty map so all future calls
                 # hit the fast-path and make zero further API calls.
                 self._sla_field_map = {}
-                return mapping
 
-        # Success — cache so we never call fields() again.
-        self._sla_field_map = mapping
         return mapping
 
     # ------------------------------------------------------------------
