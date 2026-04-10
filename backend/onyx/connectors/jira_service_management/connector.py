@@ -179,14 +179,17 @@ def _get_request_type(issue: Any) -> str | None:
 
 
 def _get_service_desk_id(issue: Any) -> str | None:
-    """Extract the service desk / project service desk ID from the issue."""
+    """Extract the numeric service desk ID from the issue, if present.
+
+    Jira service desk IDs are numeric strings (e.g. ``"1"``, ``"2"``).
+    If ``serviceDeskId`` is absent we return ``None`` rather than
+    substituting the project key, which is a string of a different type
+    and would produce semantically incorrect metadata.
+    """
     try:
         sd = getattr(issue.fields, "serviceDeskId", None)
         if sd is not None:
             return str(sd)
-        project = getattr(issue.fields, "project", None)
-        if project is not None:
-            return str(getattr(project, "key", ""))
     except Exception:
         pass
     return None
@@ -253,11 +256,16 @@ class JiraServiceManagementConnector(JiraConnector):
                         )
                         break  # one canonical key per field ID
         except Exception:
-            logger.warning(
+            logger.error(
                 "JSM SLA field discovery failed — SLA metadata will be "
-                "omitted.  Check connector credentials / permissions.",
+                "omitted for this document.  The discovery will be retried "
+                "on the next document.  Check connector credentials / permissions.",
                 exc_info=True,
             )
+            # Do NOT cache the empty mapping — keep self._sla_field_map = None
+            # so that the next call retries instead of permanently disabling
+            # SLA enrichment for the connector lifetime.
+            return mapping
 
         self._sla_field_map = mapping
         return mapping
