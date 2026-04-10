@@ -9,6 +9,7 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 from typing import Any
+from typing import ClassVar
 
 import requests
 from jira import JIRA
@@ -495,7 +496,7 @@ class JiraConnector(
     # Subclasses can override this to change the EE permission-group prefix
     # (e.g., "jira_service_management_" instead of "jira_") AND the document
     # source assigned at creation time in process_jira_issue.
-    _source: DocumentSource = DocumentSource.JIRA
+    _source: ClassVar[DocumentSource] = DocumentSource.JIRA
 
     def __init__(
         self,
