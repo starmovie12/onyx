@@ -165,24 +165,23 @@ def _get_raw_field(issue: Any, field_id: str) -> Any:
         return None
 
 
-def _get_request_type(issue: Any) -> str | None:
+def _get_request_type(issue: Any, request_type_field_id: str | None = None) -> str | None:
     """Extract the JSM request type name from an issue, if present."""
     try:
         # Cloud: issue.fields.requestType  (added by JSM REST layer)
         rt = getattr(issue.fields, "requestType", None)
         if rt is not None:
             return getattr(rt, "name", None) or str(rt)
-        # Server/DC: sometimes stored under customfield as a dict
-        raw_fields: dict[str, Any] = (
-            issue.raw.get("fields", {}) if isinstance(issue.raw, dict) else {}
-        )
-        for _fid, fval in raw_fields.items():
-            if not _fid.startswith("customfield_"):
-                continue
+        # Server/DC: look up only the discovered request-type custom field ID.
+        if request_type_field_id:
+            raw_fields: dict[str, Any] = (
+                issue.raw.get("fields", {}) if isinstance(issue.raw, dict) else {}
+            )
+            fval = raw_fields.get(request_type_field_id)
             if isinstance(fval, dict):
-                rt = fval.get("requestType")
-                if isinstance(rt, dict):
-                    name = rt.get("name")
+                rt_dict = fval.get("requestType")
+                if isinstance(rt_dict, dict):
+                    name = rt_dict.get("name")
                     if name:
                         return str(name)
     except Exception:
@@ -266,6 +265,8 @@ class JiraServiceManagementConnector(JiraConnector):
         # Tracks how many times SLA field discovery has been attempted so that
         # persistent failures do not generate unbounded failing API calls.
         self._sla_discovery_attempts: int = 0
+        # Cached field ID for the "Customer Request Type" custom field.
+        self._request_type_field_id: str | None = None
 
     # ------------------------------------------------------------------
     # SLA field discovery
@@ -296,6 +297,12 @@ class JiraServiceManagementConnector(JiraConnector):
                 field_id: str = field_meta.get("id", "")
                 field_name: str = field_meta.get("name", "")
                 if not field_id.startswith("customfield_"):
+                    continue
+                if re.search(r"customer\s+request\s+type", field_name, re.IGNORECASE):
+                    self._request_type_field_id = field_id
+                    logger.debug(
+                        f"JSM request-type field discovered: {field_id!r} ({field_name!r})"
+                    )
                     continue
                 for pattern, canonical_key in _COMPILED_SLA_PATTERNS:
                     if pattern.search(field_name):
@@ -395,7 +402,9 @@ class JiraServiceManagementConnector(JiraConnector):
 
     def _attach_jsm_metadata(self, document: Document, issue: Issue) -> None:
         """Populate non-SLA JSM-specific metadata keys."""
-        request_type = _get_request_type(issue)
+        # Ensure discovery has run so _request_type_field_id is populated.
+        self._discover_sla_fields()
+        request_type = _get_request_type(issue, self._request_type_field_id)
         if request_type:
             document.metadata[_META_REQUEST_TYPE] = request_type
 
