@@ -137,10 +137,19 @@ class TestSLAFieldDiscovery:
         mock_jira_client.fields.return_value = []
         assert jsm_connector._discover_sla_fields() == {}
 
-    def test_api_failure_returns_empty_map_and_does_not_raise(
+    def test_api_failure_returns_none_before_cap(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
     ) -> None:
         mock_jira_client.fields.side_effect = RuntimeError("API down")
+        result = jsm_connector._discover_sla_fields()
+        assert result is None  # retry still allowed
+
+    def test_api_failure_returns_empty_map_after_cap(
+        self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
+    ) -> None:
+        mock_jira_client.fields.side_effect = RuntimeError("API down")
+        # Manually set attempts to just before the cap
+        jsm_connector._sla_discovery_attempts = jsm_connector._MAX_SLA_DISCOVERY_ATTEMPTS - 1
         result = jsm_connector._discover_sla_fields()
         assert result == {}
 
