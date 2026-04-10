@@ -13,6 +13,60 @@ entries:
       licenses: MIT
     apiVersion: v2
     appVersion: latest
+    created: "2026-04-10T22:14:07.956383205Z"
+    dependencies:
+    - alias: postgresql
+      condition: postgresql.enabled
+      name: cloudnative-pg
+      repository: https://cloudnative-pg.github.io/charts
+      version: 0.26.0
+    - condition: vespa.enabled
+      name: vespa
+      repository: https://onyx-dot-app.github.io/vespa-helm-charts
+      version: 0.2.25
+    - condition: opensearch.enabled
+      name: opensearch
+      repository: https://opensearch-project.github.io/helm-charts
+      version: 3.4.0
+    - alias: nginx
+      condition: nginx.enabled
+      name: ingress-nginx
+      repository: https://kubernetes.github.io/ingress-nginx
+      version: 4.13.3
+    - condition: redis.enabled
+      name: redis
+      repository: https://ot-container-kit.github.io/helm-charts
+      version: 0.16.6
+    - condition: minio.enabled
+      name: minio
+      repository: https://charts.min.io/
+      version: 5.4.0
+    - condition: codeInterpreter.enabled
+      name: code-interpreter
+      repository: https://onyx-dot-app.github.io/python-sandbox/
+      version: 0.3.3
+    description: A Helm chart for Kubernetes
+    digest: e77ccd88aafa7a296fe40b5536d4b8ce5298a197aee1bd36f2ee58195b3d9f25
+    home: https://www.onyx.app/
+    name: onyx
+    sources:
+    - https://github.com/onyx-dot-app/onyx
+    type: application
+    urls:
+    - https://starmovie12.github.io/onyx/onyx-0.4.43.tgz
+    version: 0.4.43
+  - annotations:
+      category: Productivity
+      images: |
+        - name: webserver
+          image: docker.io/onyxdotapp/onyx-web-server:latest
+        - name: background
+          image: docker.io/onyxdotapp/onyx-backend:latest
+        - name: vespa
+          image: vespaengine/vespa:8.609.39
+      licenses: MIT
+    apiVersion: v2
+    appVersion: latest
     created: "2026-04-10T22:13:33.411453501Z"
     dependencies:
     - alias: postgresql
@@ -217,4 +271,4 @@ entries:
     urls:
     - https://starmovie12.github.io/onyx/onyx-0.4.33.tgz
     version: 0.4.33
-generated: "2026-04-10T22:13:33.39184317Z"
+generated: "2026-04-10T22:14:07.937887055Z"
