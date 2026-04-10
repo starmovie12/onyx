@@ -99,8 +99,8 @@ class TestSLAFieldDiscovery:
             _make_field_meta("customfield_10020", "Time to first response"),
             _make_field_meta("summary", "Summary"),  # non-custom — must be ignored
         ]
-        result = jsm_connector._discover_sla_fields()
-        assert result == {"customfield_10020": "sla_time_to_first_response"}
+        jsm_connector._discover_fields()
+        assert jsm_connector._sla_field_map == {"customfield_10020": "sla_time_to_first_response"}
 
     def test_discovers_time_to_resolution(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
@@ -108,9 +108,9 @@ class TestSLAFieldDiscovery:
         mock_jira_client.fields.return_value = [
             _make_field_meta("customfield_10030", "Time to resolution"),
         ]
-        result = jsm_connector._discover_sla_fields()
-        assert "customfield_10030" in result
-        assert result["customfield_10030"] == "sla_time_to_resolution"
+        jsm_connector._discover_fields()
+        assert "customfield_10030" in jsm_connector._sla_field_map
+        assert jsm_connector._sla_field_map["customfield_10030"] == "sla_time_to_resolution"
 
     def test_discovery_is_case_insensitive(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
@@ -118,8 +118,8 @@ class TestSLAFieldDiscovery:
         mock_jira_client.fields.return_value = [
             _make_field_meta("customfield_10050", "TIME TO FIRST RESPONSE"),
         ]
-        result = jsm_connector._discover_sla_fields()
-        assert "customfield_10050" in result
+        jsm_connector._discover_fields()
+        assert "customfield_10050" in jsm_connector._sla_field_map
 
     def test_non_customfield_ids_are_ignored(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
@@ -128,21 +128,22 @@ class TestSLAFieldDiscovery:
             _make_field_meta("summary", "Time to first response"),
             _make_field_meta("description", "Time to resolution"),
         ]
-        result = jsm_connector._discover_sla_fields()
-        assert result == {}
+        jsm_connector._discover_fields()
+        assert jsm_connector._sla_field_map == {}
 
     def test_empty_fields_returns_empty_map(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
     ) -> None:
         mock_jira_client.fields.return_value = []
-        assert jsm_connector._discover_sla_fields() == {}
+        jsm_connector._discover_fields()
+        assert jsm_connector._sla_field_map == {}
 
     def test_api_failure_returns_none_before_cap(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
     ) -> None:
         mock_jira_client.fields.side_effect = RuntimeError("API down")
-        result = jsm_connector._discover_sla_fields()
-        assert result is None  # retry still allowed
+        jsm_connector._discover_fields()
+        assert jsm_connector._sla_field_map is None  # retry still allowed
 
     def test_api_failure_returns_empty_map_after_cap(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
@@ -152,8 +153,8 @@ class TestSLAFieldDiscovery:
         jsm_connector._sla_discovery_attempts = (
             jsm_connector._MAX_SLA_DISCOVERY_ATTEMPTS - 1
         )
-        result = jsm_connector._discover_sla_fields()
-        assert result == {}
+        jsm_connector._discover_fields()
+        assert jsm_connector._sla_field_map == {}
 
     def test_discovery_cached_after_first_call(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
@@ -161,8 +162,10 @@ class TestSLAFieldDiscovery:
         mock_jira_client.fields.return_value = [
             _make_field_meta("customfield_10020", "Time to first response"),
         ]
-        first = jsm_connector._discover_sla_fields()
-        second = jsm_connector._discover_sla_fields()
+        jsm_connector._discover_fields()
+        first = jsm_connector._sla_field_map
+        jsm_connector._discover_fields()
+        second = jsm_connector._sla_field_map
         # Should only call the API once
         mock_jira_client.fields.assert_called_once()
         assert first is second  # same dict object returned from cache
@@ -175,11 +178,11 @@ class TestSLAFieldDiscovery:
             _make_field_meta("customfield_10030", "Time to resolution"),
             _make_field_meta("customfield_10040", "Time to close"),
         ]
-        result = jsm_connector._discover_sla_fields()
-        assert len(result) == 3
-        assert result["customfield_10020"] == "sla_time_to_first_response"
-        assert result["customfield_10030"] == "sla_time_to_resolution"
-        assert result["customfield_10040"] == "sla_time_to_close"
+        jsm_connector._discover_fields()
+        assert len(jsm_connector._sla_field_map) == 3
+        assert jsm_connector._sla_field_map["customfield_10020"] == "sla_time_to_first_response"
+        assert jsm_connector._sla_field_map["customfield_10030"] == "sla_time_to_resolution"
+        assert jsm_connector._sla_field_map["customfield_10040"] == "sla_time_to_close"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
