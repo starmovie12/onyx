@@ -29,7 +29,7 @@ Jira REST API.  The subclass adds three things that are unique to JSM:
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, ClassVar
 
 from typing_extensions import override
 
@@ -233,13 +233,13 @@ class JiraServiceManagementConnector(JiraConnector):
     base class calls for every successfully-processed issue.
     """
 
-    _source: DocumentSource = DocumentSource.JIRA_SERVICE_MANAGEMENT
+    _source: ClassVar[DocumentSource] = DocumentSource.JIRA_SERVICE_MANAGEMENT
 
     # Maximum number of times we will attempt SLA field discovery before giving
     # up for the lifetime of this connector run.  This prevents a persistent
     # failure (e.g. a missing OAuth scope) from issuing one failing HTTP call
     # per issue when indexing large projects.
-    _MAX_SLA_DISCOVERY_ATTEMPTS: int = 3
+    _MAX_SLA_DISCOVERY_ATTEMPTS: ClassVar[int] = 3
 
     def __init__(
         self,
