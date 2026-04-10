@@ -395,6 +395,7 @@ class TestJSMMetadataHelpers:
 
     def test_get_raw_field_missing_returns_none(self) -> None:
         issue = make_mock_issue()
+        issue.fields.customfield_99999 = None
         assert _get_raw_field(issue, "customfield_99999") is None
 
     def test_get_request_type_from_field(self) -> None:
@@ -409,16 +410,18 @@ class TestJSMMetadataHelpers:
         issue.fields.requestType = None
         assert _get_request_type(issue) is None
 
-    def test_get_service_desk_id_from_project_key(self) -> None:
+    def test_get_service_desk_id_absent_returns_none(self) -> None:
         issue = make_mock_issue(project_key="HELP")
+        issue.fields.serviceDeskId = None
         result = _get_service_desk_id(issue)
-        assert result == "HELP"
+        assert result is None
 
     def test_jsm_metadata_attached_to_document(
         self, jsm_connector: JiraServiceManagementConnector
     ) -> None:
         jsm_connector._sla_field_map = {}
         issue = make_mock_issue(project_key="SD")
+        issue.fields.serviceDeskId = "SD"
         rt = MagicMock()
         rt.name = "Password Reset"
         issue.fields.requestType = rt
