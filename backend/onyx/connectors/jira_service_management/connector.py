@@ -75,11 +75,9 @@ _META_SERVICE_DESK = "jsm_service_desk_id"
 _BREACH_SUFFIX = "_breached"
 
 
-def _compile_sla_patterns() -> list[tuple[re.Pattern[str], str]]:
-    return [(re.compile(pat, re.IGNORECASE), key) for pat, key in _SLA_FIELD_PATTERNS]
-
-
-_COMPILED_SLA_PATTERNS = _compile_sla_patterns()
+_COMPILED_SLA_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(pat, re.IGNORECASE), key) for pat, key in _SLA_FIELD_PATTERNS
+]
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +169,7 @@ def _get_request_type(issue: Any, request_type_field_id: str | None = None) -> s
         # Cloud: issue.fields.requestType  (added by JSM REST layer)
         rt = getattr(issue.fields, "requestType", None)
         if rt is not None:
-            return getattr(rt, "name", None) or str(rt)
+            return getattr(rt, "name", None) or None
         # Server/DC: look up only the discovered request-type custom field ID.
         if request_type_field_id:
             raw_fields: dict[str, Any] = (
@@ -272,7 +270,7 @@ class JiraServiceManagementConnector(JiraConnector):
     # SLA field discovery
     # ------------------------------------------------------------------
 
-    def _discover_fields(self) -> dict[str, str] | None:
+    def _ensure_fields_discovered(self) -> None:
         """Fetch the Jira field list once and delegate to isolated discovery helpers.
 
         Calls ``GET /rest/api/2/field`` on the first invocation and caches
@@ -281,12 +279,12 @@ class JiraServiceManagementConnector(JiraConnector):
         empty map so future calls hit the fast-path and make zero further API
         calls.
 
-        Returns:
-            Mapping of ``{"customfield_XXXXX": "sla_<canonical_key>", ...}``
+        Callers should read ``self._sla_field_map`` and
+        ``self._request_type_field_id`` directly after this call.
         """
         # Fast-path: already discovered (successfully or permanently failed).
         if self._sla_field_map is not None:
-            return self._sla_field_map
+            return
 
         self._sla_discovery_attempts += 1
 
@@ -303,7 +301,7 @@ class JiraServiceManagementConnector(JiraConnector):
                     f"Check connector credentials / permissions.",
                     exc_info=True,
                 )
-                return None
+                return
             else:
                 logger.warning(
                     f"JSM field fetch failed (attempt "
@@ -313,12 +311,11 @@ class JiraServiceManagementConnector(JiraConnector):
                     exc_info=True,
                 )
                 self._sla_field_map = {}
-                return self._sla_field_map
+                return
 
         # Each helper has its own failure scope — one cannot corrupt the other.
         self._discover_sla_mapping(all_fields)
         self._discover_request_type_mapping(all_fields)
-        return self._sla_field_map
 
     def _discover_sla_mapping(self, all_fields: list[dict[str, Any]]) -> None:
         """Populate ``_sla_field_map`` from a pre-fetched field list.
@@ -391,7 +388,7 @@ class JiraServiceManagementConnector(JiraConnector):
         to be dropped.
         """
         # Single discovery call per document; both helpers use the cached state.
-        self._discover_fields()
+        self._ensure_fields_discovered()
         try:
             self._attach_sla_metadata(document, issue)
         except Exception:
