@@ -56,7 +56,9 @@ def jira_service_management_doc_sync(
     connector to provide actionable error messages on misconfiguration
     rather than cryptic failures deep in the permission-sync pipeline.
     """
-    connector_specific_config: dict[str, Any] = cc_pair.connector.connector_specific_config
+    connector_specific_config: dict[str, Any] = (
+        cc_pair.connector.connector_specific_config
+    )
 
     # P1 fix: validate URL before any network calls so that a bad config
     # surfaces a clear error instead of silently producing wrong document IDs.
@@ -71,7 +73,6 @@ def jira_service_management_doc_sync(
         else {}
     )
     jsm_connector.load_credentials(credential_json)
-
     yield from generic_doc_sync(
         cc_pair=cc_pair,
         fetch_all_existing_docs_ids_fn=fetch_all_existing_docs_ids_fn,
