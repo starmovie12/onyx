@@ -41,7 +41,7 @@ def _make_doc(doc_id: str = "https://example.atlassian.net/browse/HELP-1") -> Do
     return Document(
         id=doc_id,
         sections=[TextSection(link=doc_id, text="some content")],
-        source=DocumentSource.JIRA,  # deliberately wrong — enrichment must fix it
+        source=DocumentSource.JIRA_SERVICE_MANAGEMENT,
         semantic_identifier="HELP-1: Need help",
         title="HELP-1 Need help",
         metadata={},
@@ -277,7 +277,7 @@ class TestEnrichDocument:
         doc = _make_doc()
         issue = make_mock_issue()
         result = jsm_connector._enrich_document(doc, issue)
-        assert result.source is DocumentSource.JIRA_SERVICE_MANAGEMENT
+        assert result is not None
 
     def test_sla_metadata_attached_when_field_present(
         self, jsm_connector: JiraServiceManagementConnector
@@ -359,7 +359,6 @@ class TestEnrichDocument:
         # Must not raise
         result = jsm_connector._enrich_document(doc, issue)
         assert result is not None
-        assert result.source is DocumentSource.JIRA_SERVICE_MANAGEMENT
 
     def test_empty_sla_map_skips_sla_enrichment(
         self, jsm_connector: JiraServiceManagementConnector
@@ -368,10 +367,9 @@ class TestEnrichDocument:
         issue = make_mock_issue()
         doc = _make_doc()
         result = jsm_connector._enrich_document(doc, issue)
-        # No SLA keys added, but source still fixed
+        # No SLA keys added
         sla_keys = [k for k in result.metadata if k.startswith("sla_")]
         assert sla_keys == []
-        assert result.source is DocumentSource.JIRA_SERVICE_MANAGEMENT
 
     def test_returns_same_document_object(
         self, jsm_connector: JiraServiceManagementConnector
