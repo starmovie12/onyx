@@ -364,7 +364,7 @@ class TestEnrichDocument:
         }
         broken_sla = (
             object()
-        )  # not a dict or str — will fail inside _extract_sla_display
+        )  # not a str or dict — _extract_sla_display returns (None, False)
         issue = make_mock_issue(extra_fields={"customfield_10020": broken_sla})
         doc = _make_doc()
         # Must not raise
