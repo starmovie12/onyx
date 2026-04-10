@@ -491,8 +491,11 @@ class JiraConnector(
     CheckpointedConnectorWithPermSync[JiraConnectorCheckpoint],
     SlimConnectorWithPermSync,
 ):
-    # Subclasses can override this to change the source type for indexed documents
-    # and EE permission group prefixes without duplicating any caching logic.
+    # Subclasses can override this to change the EE permission-group prefix
+    # (e.g., "jira_service_management_" instead of "jira_").
+    # NOTE: process_jira_issue() hard-codes DocumentSource.JIRA as the document
+    # source; subclasses must also override _enrich_document() and set
+    # document.source explicitly if they need a different DocumentSource value.
     _source: DocumentSource = DocumentSource.JIRA
 
     def __init__(
