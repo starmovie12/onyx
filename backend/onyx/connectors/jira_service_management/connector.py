@@ -176,6 +176,8 @@ def _get_request_type(issue: Any) -> str | None:
             issue.raw.get("fields", {}) if isinstance(issue.raw, dict) else {}
         )
         for _fid, fval in raw_fields.items():
+            if not _fid.startswith("customfield_"):
+                continue
             if isinstance(fval, dict):
                 rt = fval.get("requestType")
                 if isinstance(rt, dict):
@@ -268,7 +270,7 @@ class JiraServiceManagementConnector(JiraConnector):
     # SLA field discovery
     # ------------------------------------------------------------------
 
-    def _discover_sla_fields(self) -> dict[str, str]:
+    def _discover_sla_fields(self) -> dict[str, str] | None:
         """Discover which ``customfield_*`` IDs correspond to SLA fields.
 
         Calls ``GET /rest/api/2/field`` on the first invocation and caches
