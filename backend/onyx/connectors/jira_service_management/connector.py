@@ -29,7 +29,8 @@ Jira REST API.  The subclass adds three things that are unique to JSM:
 from __future__ import annotations
 
 import re
-from typing import Any, ClassVar
+from typing import Any
+from typing import ClassVar
 
 from typing_extensions import override
 
