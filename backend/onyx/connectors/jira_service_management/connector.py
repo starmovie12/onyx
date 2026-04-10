@@ -309,7 +309,7 @@ class JiraServiceManagementConnector(JiraConnector):
             self._sla_field_map = mapping
         except Exception:
             if self._sla_discovery_attempts < self._MAX_SLA_DISCOVERY_ATTEMPTS:
-                logger.error(
+                logger.warning(
                     f"JSM SLA field discovery failed (attempt "
                     f"{self._sla_discovery_attempts}/{self._MAX_SLA_DISCOVERY_ATTEMPTS}) — "
                     f"SLA metadata will be omitted for this document. "
@@ -320,7 +320,7 @@ class JiraServiceManagementConnector(JiraConnector):
                 # Do NOT cache on failure yet — allow retries up to the cap.
                 return None
             else:
-                logger.error(
+                logger.warning(
                     f"JSM SLA field discovery failed (attempt "
                     f"{self._sla_discovery_attempts}/{self._MAX_SLA_DISCOVERY_ATTEMPTS}) — "
                     f"No more retries; SLA enrichment disabled for this run. "
