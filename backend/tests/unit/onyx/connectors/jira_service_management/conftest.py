@@ -130,6 +130,12 @@ def make_mock_issue(
         }
     }
 
+    # Explicitly pin JSM-specific fields to None so that getattr() calls in
+    # _get_service_desk_id / _get_raw_field return None rather than an
+    # auto-created MagicMock, which would silently attach garbage metadata.
+    issue.fields.serviceDeskId = None
+    issue.fields.requestType = None
+
     # Apply any extra_fields as attributes too
     if extra_fields:
         for fname, fval in extra_fields.items():
