@@ -172,8 +172,8 @@ def _get_request_type(issue: Any) -> str | None:
         if rt is not None:
             return getattr(rt, "name", None) or str(rt)
         # Server/DC: sometimes stored under customfield as a dict
-        raw_fields: dict[str, Any] = getattr(issue.raw, "get", lambda *_: {})(
-            "fields", {}
+        raw_fields: dict[str, Any] = (
+            issue.raw.get("fields", {}) if isinstance(issue.raw, dict) else {}
         )
         if isinstance(raw_fields, dict):
             for _fid, fval in raw_fields.items():
@@ -230,6 +230,12 @@ class JiraServiceManagementConnector(JiraConnector):
 
     _source: DocumentSource = DocumentSource.JIRA_SERVICE_MANAGEMENT
 
+    # Maximum number of times we will attempt SLA field discovery before giving
+    # up for the lifetime of this connector run.  This prevents a persistent
+    # failure (e.g. a missing OAuth scope) from issuing one failing HTTP call
+    # per issue when indexing large projects.
+    _MAX_SLA_DISCOVERY_ATTEMPTS: int = 3
+
     def __init__(
         self,
         jira_base_url: str,
@@ -251,6 +257,9 @@ class JiraServiceManagementConnector(JiraConnector):
         )
         # Maps customfield_XXXXX → canonical metadata key (populated lazily).
         self._sla_field_map: dict[str, str] | None = None
+        # Tracks how many times SLA field discovery has been attempted so that
+        # persistent failures do not generate unbounded failing API calls.
+        self._sla_discovery_attempts: int = 0
 
     # ------------------------------------------------------------------
     # SLA field discovery
@@ -259,15 +268,29 @@ class JiraServiceManagementConnector(JiraConnector):
     def _discover_sla_fields(self) -> dict[str, str]:
         """Discover which ``customfield_*`` IDs correspond to SLA fields.
 
-        Calls ``GET /rest/api/2/field`` exactly once per connector
-        lifetime (the result is cached in ``self._sla_field_map``).
+        Calls ``GET /rest/api/2/field`` on the first invocation and caches
+        the result.  Transient failures are retried on subsequent calls up to
+        ``_MAX_SLA_DISCOVERY_ATTEMPTS`` times; after that the method returns
+        an empty dict for the remainder of the connector run to avoid
+        hammering the Jira API on persistent failures (e.g. a missing OAuth
+        scope on a 10,000-issue project).
 
         Returns:
             Mapping of ``{"customfield_XXXXX": "sla_<canonical_key>", ...}``
         """
+        # Fast-path: already discovered successfully.
         if self._sla_field_map is not None:
             return self._sla_field_map
 
+        # Failure cap: stop retrying after repeated errors to avoid unbounded
+        # failing HTTP calls on persistent permission / scope problems.
+        # Setting self._sla_field_map = {} here means subsequent calls hit the
+        # fast-path (is not None) and return immediately without any counter check.
+        if self._sla_discovery_attempts >= self._MAX_SLA_DISCOVERY_ATTEMPTS:
+            self._sla_field_map = {}
+            return {}
+
+        self._sla_discovery_attempts += 1
         mapping: dict[str, str] = {}
         try:
             all_fields: list[dict[str, Any]] = self.jira_client.fields()
@@ -285,17 +308,32 @@ class JiraServiceManagementConnector(JiraConnector):
                         )
                         break  # one canonical key per field ID
         except Exception:
-            logger.error(
-                "JSM SLA field discovery failed — SLA metadata will be "
-                "omitted for this document.  The discovery will be retried "
-                "on the next document.  Check connector credentials / permissions.",
-                exc_info=True,
-            )
-            # Do NOT cache the empty mapping — keep self._sla_field_map = None
-            # so that the next call retries instead of permanently disabling
-            # SLA enrichment for the connector lifetime.
-            return mapping
+            remaining = self._MAX_SLA_DISCOVERY_ATTEMPTS - self._sla_discovery_attempts
+            if remaining > 0:
+                logger.error(
+                    f"JSM SLA field discovery failed (attempt "
+                    f"{self._sla_discovery_attempts}/{self._MAX_SLA_DISCOVERY_ATTEMPTS}) — "
+                    f"SLA metadata will be omitted for this document. "
+                    f"Retrying on next document. "
+                    f"Check connector credentials / permissions.",
+                    exc_info=True,
+                )
+                # Do NOT cache on failure yet — allow retries up to the cap.
+                return mapping
+            else:
+                logger.error(
+                    f"JSM SLA field discovery failed (attempt "
+                    f"{self._sla_discovery_attempts}/{self._MAX_SLA_DISCOVERY_ATTEMPTS}) — "
+                    f"No more retries; SLA enrichment disabled for this run. "
+                    f"Check connector credentials / permissions.",
+                    exc_info=True,
+                )
+                # Max attempts reached — cache empty map so all future calls
+                # hit the fast-path and make zero further API calls.
+                self._sla_field_map = {}
+                return mapping
 
+        # Success — cache so we never call fields() again.
         self._sla_field_map = mapping
         return mapping
 
