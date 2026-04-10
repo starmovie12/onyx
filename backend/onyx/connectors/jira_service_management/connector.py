@@ -176,8 +176,12 @@ def _get_request_type(issue: Any) -> str | None:
             issue.raw.get("fields", {}) if isinstance(issue.raw, dict) else {}
         )
         for _fid, fval in raw_fields.items():
-            if isinstance(fval, dict) and fval.get("requestType"):
-                return str(fval["requestType"].get("name", ""))
+            if isinstance(fval, dict):
+                rt = fval.get("requestType")
+                if isinstance(rt, dict):
+                    name = rt.get("name")
+                    if name:
+                        return str(name)
     except Exception:
         logger.debug(
             f"Failed to extract request type from issue {getattr(issue, 'key', '?')!r}",
@@ -311,6 +315,7 @@ class JiraServiceManagementConnector(JiraConnector):
                     exc_info=True,
                 )
                 # Do NOT cache on failure yet — allow retries up to the cap.
+                return None
             else:
                 logger.error(
                     f"JSM SLA field discovery failed (attempt "
@@ -362,6 +367,12 @@ class JiraServiceManagementConnector(JiraConnector):
     def _attach_sla_metadata(self, document: Document, issue: Issue) -> None:
         """Populate SLA-related keys in ``document.metadata``."""
         sla_field_map = self._discover_sla_fields()
+        if sla_field_map is None:
+            logger.debug(
+                f"SLA field discovery not yet complete (transient failure); "
+                f"skipping SLA enrichment for {document.id!r}."
+            )
+            return
         if not sla_field_map:
             logger.debug(
                 f"SLA field map is empty; skipping SLA enrichment for {document.id!r}."
