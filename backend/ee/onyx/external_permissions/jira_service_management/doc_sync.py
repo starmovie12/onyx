@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from typing import Any
 
 from ee.onyx.external_permissions.perm_sync_types import FetchAllDocumentsFunction
 from ee.onyx.external_permissions.perm_sync_types import FetchAllDocumentsIdsFunction
@@ -18,7 +19,7 @@ logger = setup_logger()
 JSM_DOC_SYNC_TAG = "jira_service_management_doc_sync"
 
 
-def _validate_jsm_config(connector_specific_config: dict) -> None:
+def _validate_jsm_config(connector_specific_config: dict[str, Any]) -> None:
     """Validate that required JSM connector fields are present and well-formed.
 
     Raises:
@@ -55,7 +56,7 @@ def jira_service_management_doc_sync(
     connector to provide actionable error messages on misconfiguration
     rather than cryptic failures deep in the permission-sync pipeline.
     """
-    connector_specific_config: dict = cc_pair.connector.connector_specific_config
+    connector_specific_config: dict[str, Any] = cc_pair.connector.connector_specific_config
 
     # P1 fix: validate URL before any network calls so that a bad config
     # surfaces a clear error instead of silently producing wrong document IDs.
