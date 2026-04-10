@@ -377,6 +377,7 @@ def process_jira_issue(
     comment_email_blacklist: tuple[str, ...] = (),
     labels_to_skip: set[str] | None = None,
     parent_hierarchy_raw_node_id: str | None = None,
+    source: DocumentSource = DocumentSource.JIRA,
 ) -> Document | None:
     if labels_to_skip:
         if any(label in issue.fields.labels for label in labels_to_skip):
@@ -465,7 +466,7 @@ def process_jira_issue(
     return Document(
         id=page_url,
         sections=[TextSection(link=page_url, text=ticket_content)],
-        source=DocumentSource.JIRA,
+        source=source,
         semantic_identifier=f"{issue.key}: {issue.fields.summary}",
         title=f"{issue.key} {issue.fields.summary}",
         doc_updated_at=time_str_to_utc(issue.fields.updated),
@@ -492,10 +493,8 @@ class JiraConnector(
     SlimConnectorWithPermSync,
 ):
     # Subclasses can override this to change the EE permission-group prefix
-    # (e.g., "jira_service_management_" instead of "jira_").
-    # NOTE: process_jira_issue() hard-codes DocumentSource.JIRA as the document
-    # source; subclasses must also override _enrich_document() and set
-    # document.source explicitly if they need a different DocumentSource value.
+    # (e.g., "jira_service_management_" instead of "jira_") AND the document
+    # source assigned at creation time in process_jira_issue.
     _source: DocumentSource = DocumentSource.JIRA
 
     def __init__(
@@ -578,6 +577,10 @@ class JiraConnector(
         JiraServiceManagementConnector) override this to attach extra fields
         (SLA data, request type, …) without duplicating any checkpoint or
         pagination logic.
+
+        The document's ``source`` is already set correctly by ``process_jira_issue``
+        via the ``source=self._source`` argument, so subclasses do not need to
+        set it again here.
 
         Args:
             document: The fully-populated Document produced by process_jira_issue.
@@ -841,6 +844,7 @@ class JiraConnector(
                     comment_email_blacklist=self.comment_email_blacklist,
                     labels_to_skip=self.labels_to_skip,
                     parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
+                    source=self._source,
                 ):
                     # Allow subclasses to attach source-specific metadata (e.g. SLA)
                     # without duplicating any pagination / checkpoint logic.
