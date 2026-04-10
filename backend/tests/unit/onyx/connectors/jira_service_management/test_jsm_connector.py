@@ -149,7 +149,9 @@ class TestSLAFieldDiscovery:
     ) -> None:
         mock_jira_client.fields.side_effect = RuntimeError("API down")
         # Manually set attempts to just before the cap
-        jsm_connector._sla_discovery_attempts = jsm_connector._MAX_SLA_DISCOVERY_ATTEMPTS - 1
+        jsm_connector._sla_discovery_attempts = (
+            jsm_connector._MAX_SLA_DISCOVERY_ATTEMPTS - 1
+        )
         result = jsm_connector._discover_sla_fields()
         assert result == {}
 
