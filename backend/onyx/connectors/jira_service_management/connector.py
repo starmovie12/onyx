@@ -356,6 +356,8 @@ class JiraServiceManagementConnector(JiraConnector):
         missing SLA field must never cause an otherwise-healthy document
         to be dropped.
         """
+        # Single discovery call per document; both helpers use the cached state.
+        self._discover_sla_fields()
         try:
             self._attach_sla_metadata(document, issue)
         except Exception:
@@ -376,7 +378,8 @@ class JiraServiceManagementConnector(JiraConnector):
 
     def _attach_sla_metadata(self, document: Document, issue: Issue) -> None:
         """Populate SLA-related keys in ``document.metadata``."""
-        sla_field_map = self._discover_sla_fields()
+        # Discovery already called by _enrich_document; use cached result.
+        sla_field_map = self._sla_field_map
         if sla_field_map is None:
             logger.debug(
                 f"SLA field discovery not yet complete (transient failure); "
@@ -402,8 +405,7 @@ class JiraServiceManagementConnector(JiraConnector):
 
     def _attach_jsm_metadata(self, document: Document, issue: Issue) -> None:
         """Populate non-SLA JSM-specific metadata keys."""
-        # Ensure discovery has run so _request_type_field_id is populated.
-        self._discover_sla_fields()
+        # Discovery already called by _enrich_document; _request_type_field_id is populated.
         request_type = _get_request_type(issue, self._request_type_field_id)
         if request_type:
             document.metadata[_META_REQUEST_TYPE] = request_type
