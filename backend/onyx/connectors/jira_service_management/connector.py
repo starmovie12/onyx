@@ -33,6 +33,8 @@ from typing import Any
 
 from typing_extensions import override
 
+from onyx.configs.app_configs import INDEX_BATCH_SIZE
+from onyx.configs.app_configs import JIRA_CONNECTOR_LABELS_TO_SKIP
 from onyx.configs.constants import DocumentSource
 from onyx.connectors.jira.connector import JiraConnector
 from onyx.connectors.models import Document
@@ -155,6 +157,10 @@ def _get_raw_field(issue: Any, field_id: str) -> Any:
     try:
         return getattr(issue.fields, field_id, None)
     except Exception:
+        logger.debug(
+            f"Failed to read field {field_id!r} from issue {getattr(issue, 'key', '?')!r}",
+            exc_info=True,
+        )
         return None
 
 
@@ -174,7 +180,10 @@ def _get_request_type(issue: Any) -> str | None:
                 if isinstance(fval, dict) and fval.get("requestType"):
                     return str(fval["requestType"].get("name", ""))
     except Exception:
-        pass
+        logger.debug(
+            f"Failed to extract request type from issue {getattr(issue, 'key', '?')!r}",
+            exc_info=True,
+        )
     return None
 
 
@@ -191,7 +200,10 @@ def _get_service_desk_id(issue: Any) -> str | None:
         if sd is not None:
             return str(sd)
     except Exception:
-        pass
+        logger.debug(
+            f"Failed to extract serviceDeskId from issue {getattr(issue, 'key', '?')!r}",
+            exc_info=True,
+        )
     return None
 
 
@@ -218,8 +230,25 @@ class JiraServiceManagementConnector(JiraConnector):
 
     _source: DocumentSource = DocumentSource.JIRA_SERVICE_MANAGEMENT
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        jira_base_url: str,
+        project_key: str | None = None,
+        comment_email_blacklist: list[str] | None = None,
+        batch_size: int = INDEX_BATCH_SIZE,
+        labels_to_skip: list[str] = JIRA_CONNECTOR_LABELS_TO_SKIP,
+        jql_query: str | None = None,
+        scoped_token: bool = False,
+    ) -> None:
+        super().__init__(
+            jira_base_url=jira_base_url,
+            project_key=project_key,
+            comment_email_blacklist=comment_email_blacklist,
+            batch_size=batch_size,
+            labels_to_skip=labels_to_skip,
+            jql_query=jql_query,
+            scoped_token=scoped_token,
+        )
         # Maps customfield_XXXXX → canonical metadata key (populated lazily).
         self._sla_field_map: dict[str, str] | None = None
 
