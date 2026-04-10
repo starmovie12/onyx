@@ -357,14 +357,15 @@ class JiraServiceManagementConnector(JiraConnector):
                 exc_info=True,
             )
 
-        # Ensure source is always set to JSM regardless of base-class default.
-        document.source = DocumentSource.JIRA_SERVICE_MANAGEMENT
         return document
 
     def _attach_sla_metadata(self, document: Document, issue: Issue) -> None:
         """Populate SLA-related keys in ``document.metadata``."""
         sla_field_map = self._discover_sla_fields()
         if not sla_field_map:
+            logger.debug(
+                f"SLA field map is empty; skipping SLA enrichment for {document.id!r}."
+            )
             return
 
         for field_id, canonical_key in sla_field_map.items():
