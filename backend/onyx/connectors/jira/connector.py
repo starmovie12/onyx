@@ -18,6 +18,7 @@ from jira.resources import Issue
 from more_itertools import chunked
 from typing_extensions import override
 
+from onyx.access.models import ExternalAccess
 from onyx.configs.app_configs import INDEX_BATCH_SIZE
 from onyx.configs.app_configs import JIRA_CONNECTOR_LABELS_TO_SKIP
 from onyx.configs.app_configs import JIRA_CONNECTOR_MAX_TICKET_SIZE
@@ -525,8 +526,9 @@ class JiraConnector(
         self.jql_query = jql_query
         self.scoped_token = scoped_token
         self._jira_client: JIRA | None = None
-        # Cache project permissions to avoid fetching them repeatedly across runs
-        self._project_permissions_cache: dict[str, Any] = {}
+        # Cache project permissions to avoid fetching them repeatedly across runs.
+        # Keyed by "<project_key>:prefixed" or "<project_key>:unprefixed".
+        self._project_permissions_cache: dict[str, ExternalAccess | None] = {}
 
     @property
     def comment_email_blacklist(self) -> tuple:
@@ -547,16 +549,19 @@ class JiraConnector(
 
     def _get_project_permissions(
         self, project_key: str, add_prefix: bool = False
-    ) -> Any:
+    ) -> ExternalAccess | None:
         """Get project permissions with caching.
 
         Args:
-            project_key: The Jira project key
-            add_prefix: When True, prefix group IDs with source type (for indexing path).
-                       When False (default), leave unprefixed (for permission sync path).
+            project_key: The Jira project key.
+            add_prefix: When True, prefix group IDs with the source type for the
+                indexing path (e.g. ``"jira_my-group"``).  When False (default),
+                leave unprefixed for the permission-sync path where
+                ``upsert_document_external_perms`` handles prefixing.
 
         Returns:
-            The external access permissions for the project
+            The external access permissions for the project, or ``None`` if
+            the project has no permissions or the lookup failed.
         """
         # Use different cache keys for prefixed vs unprefixed to avoid mixing
         cache_key = f"{project_key}:{'prefixed' if add_prefix else 'unprefixed'}"
@@ -570,22 +575,23 @@ class JiraConnector(
         return self._project_permissions_cache[cache_key]
 
     def _enrich_document(self, document: Document, _issue: Issue) -> Document:
-        """Hook for subclasses to add source-specific metadata to a document.
+        """Extension point for subclasses to attach source-specific metadata.
 
         Called once per issue after ``process_jira_issue`` returns a non-None
-        document and *before* the document is yielded to the caller.  The
-        default implementation is a no-op; subclasses (e.g.
-        JiraServiceManagementConnector) override this to attach extra fields
-        (SLA data, request type, …) without duplicating any checkpoint or
-        pagination logic.
+        document and *before* the document is yielded to the caller.
+        ``JiraServiceManagementConnector`` overrides this to attach SLA data,
+        request type, and service desk ID without duplicating any pagination or
+        checkpoint logic.
 
-        The document's ``source`` is already set correctly by ``process_jira_issue``
-        via the ``source=self._source`` argument, so subclasses do not need to
-        set it again here.
+        The document's ``source`` is already set correctly by
+        ``process_jira_issue`` via the ``source=self._source`` argument, so
+        subclasses do not need to set it again here.
 
         Args:
             document: The fully-populated Document produced by process_jira_issue.
-            issue: The raw Jira Issue object that produced the document.
+            _issue: The raw Jira Issue object.  Prefixed with ``_`` in the base
+                implementation because it is intentionally unused here; subclasses
+                receive it as ``issue`` without the underscore.
 
         Returns:
             The (optionally mutated) Document to yield downstream.
