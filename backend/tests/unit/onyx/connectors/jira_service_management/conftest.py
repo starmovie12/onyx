@@ -4,7 +4,7 @@ Shared fixtures for Jira Service Management unit tests.
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -60,12 +60,21 @@ def jsm_connector(
     jsm_base_url: str,
     jsm_project_key: str,
     mock_jira_client: MagicMock,
-) -> Generator[JiraServiceManagementConnector, None, None]:
+) -> Iterator[JiraServiceManagementConnector]:
+    """Yield a JSM connector with a pre-wired mock Jira client.
+
+    ``batch_size=2`` is passed via the constructor rather than patching the
+    module-level ``_JIRA_FULL_PAGE_SIZE`` constant, which avoids relying on
+    private internals of the base class that could be renamed or removed.
+    The patch is still applied for completeness since the base class
+    pagination logic reads that constant directly in some paths.
+    """
     connector = JiraServiceManagementConnector(
         jira_base_url=jsm_base_url,
         project_key=jsm_project_key,
         comment_email_blacklist=[],
         labels_to_skip=[],
+        batch_size=2,
     )
     connector._jira_client = mock_jira_client
     connector._jira_client.client_info = MagicMock(return_value=jsm_base_url)
@@ -74,7 +83,7 @@ def jsm_connector(
 
 
 # ---------------------------------------------------------------------------
-# Issue factory
+# Issue factory helper
 # ---------------------------------------------------------------------------
 
 
@@ -89,10 +98,61 @@ def make_mock_issue(
     labels: list[str] | None = None,
     extra_fields: dict[str, Any] | None = None,
 ) -> MagicMock:
-    """Build a lightweight mock ``Issue`` object."""
+    """Build a lightweight mock ``Issue`` object for use in unit tests.
+
+    ``issue.fields`` is created with a ``spec`` list containing every
+    attribute that is explicitly set below, plus any keys supplied via
+    ``extra_fields``.  This means:
+
+    * All legitimate reads (``issue.fields.summary``, etc.) succeed because
+      the attribute name is in the spec.
+    * Any ``customfield_*`` that is NOT in ``extra_fields`` will raise
+      ``AttributeError`` on read access, so ``getattr(issue.fields,
+      field_id, None)`` â€” the pattern used by ``_get_raw_field`` â€” correctly
+      returns ``None`` for missing fields instead of auto-creating a
+      ``MagicMock`` that would silently attach garbage metadata to indexed
+      documents.
+
+    All JSM-specific attributes (``serviceDeskId``, ``requestType``) are
+    explicitly pinned to ``None`` so that ``getattr`` calls inside the
+    connector helpers return ``None`` rather than an auto-created
+    ``MagicMock``.
+
+    Any ``extra_fields`` are applied both to ``issue.raw["fields"]`` (for
+    paths that read from the raw dict) and as ``setattr(issue.fields, â€¦)``
+    (for paths that use attribute access), keeping both representations in
+    sync.
+    """
     issue = MagicMock(spec=Issue)
     issue.key = key
-    issue.fields = MagicMock()
+
+    # Build the explicit allow-list so that:
+    #   - every attribute set below is reachable (no AttributeError on write
+    #     or subsequent read), and
+    #   - any customfield_* NOT in extra_fields still raises AttributeError,
+    #     keeping _get_raw_field's getattr(â€¦, None) semantics intact.
+    allowed_fields: list[str] = [
+        "summary",
+        "description",
+        "updated",
+        "labels",
+        "created",
+        "duedate",
+        "resolutiondate",
+        "issuetype",
+        "project",
+        "reporter",
+        "assignee",
+        "priority",
+        "status",
+        "resolution",
+        "parent",
+        "serviceDeskId",
+        "requestType",
+        *(extra_fields.keys() if extra_fields else []),
+    ]
+    issue.fields = MagicMock(spec=allowed_fields)
+
     issue.fields.summary = summary
     issue.fields.description = description
     issue.fields.updated = updated
@@ -110,7 +170,7 @@ def make_mock_issue(
     issue.fields.project.key = project_key
     issue.fields.project.name = project_name
 
-    # reporter / assignee — minimal
+    # reporter / assignee â€” minimal
     issue.fields.reporter = MagicMock()
     issue.fields.reporter.displayName = "Reporter Name"
     issue.fields.reporter.emailAddress = "reporter@example.com"
@@ -122,7 +182,7 @@ def make_mock_issue(
     issue.fields.resolution = None
     issue.fields.parent = None
 
-    # raw dict (used by extract_text_from_adf)
+    # raw dict (used by extract_text_from_adf and raw-field lookups)
     issue.raw = {
         "fields": {
             "description": description,
@@ -130,15 +190,14 @@ def make_mock_issue(
         }
     }
 
-    # Explicitly pin JSM-specific fields to None so that getattr() calls in
-    # _get_service_desk_id / _get_raw_field return None rather than an
-    # auto-created MagicMock, which would silently attach garbage metadata.
+    # Explicitly pin JSM-specific fields to None so getattr() calls in
+    # _get_service_desk_id / _get_raw_field return None, not auto-created MagicMocks.
     issue.fields.serviceDeskId = None
     issue.fields.requestType = None
 
-    # Apply any extra_fields as attributes too
+    # Apply extra_fields as attributes too so both reading paths are consistent.
     if extra_fields:
-        for fname, fval in extra_fields.items():
-            setattr(issue.fields, fname, fval)
+        for field_name, field_value in extra_fields.items():
+            setattr(issue.fields, field_name, field_value)
 
     return issue
