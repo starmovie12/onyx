@@ -746,7 +746,8 @@ export const connectorConfigs: Record<
     advanced_values: [],
   },
   jira_service_management: {
-    description: "Configure Jira Service Management connector",
+    description:
+      "Connect to Jira Service Management to index service desk tickets, customer requests, SLA metrics, and request types across all your JSM projects.",
     subtext: `Configure which Jira Service Management content to index. You can index everything or specify a particular project.`,
     values: [
       {
@@ -794,6 +795,7 @@ export const connectorConfigs: Record<
                 query: "Enter the project key:",
                 label: "Project Key",
                 name: "project_key",
+                optional: false,
                 description:
                   "The key of a specific JSM project to index (e.g., 'SERVICEDESK').",
               },
@@ -2069,6 +2071,14 @@ export interface JiraServiceManagementConfig {
   jql_query?: string;
   /** Whether a scoped OAuth token is being used. */
   scoped_token?: boolean;
+  /**
+   * Tab selection value from the indexing-scope form widget
+   * ("everything" | "project" | "jql").  Sent by the form UI but not
+   * consumed by the backend connector — the backend reads project_key and
+   * jql_query directly.  Declared here so the form config object is fully
+   * typed and TypeScript does not widen it to a looser shape.
+   */
+  indexing_scope?: string;
 }
 
 export interface SalesforceConfig {
