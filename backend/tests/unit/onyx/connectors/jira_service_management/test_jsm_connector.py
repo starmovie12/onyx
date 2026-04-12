@@ -612,15 +612,11 @@ class TestJSMMetadataHelpers:
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # 6. doc_sync URL validation (P1 fix)
 #
-# The entire class is skipped when the EE module is not importable so that
-# Community Edition CI environments do not fail with ImportError.
+# Module-level pytest.importorskip already skips this entire file on Community
+# Edition; no class-level skipif is needed.
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
-@pytest.mark.skipif(
-    _EE_DOC_SYNC_AVAILABLE is None,
-    reason="EE module not available",
-)
 class TestDocSyncURLValidation:
     def test_valid_https_url_passes(self) -> None:
         _call_validate_jsm_config({"jira_base_url": "https://example.atlassian.net"})
