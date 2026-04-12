@@ -17,6 +17,7 @@ import {
   GuruIcon,
   HubSpotIcon,
   JiraIcon,
+  ServiceNowIcon,
   LinearIcon,
   LoopioIcon,
   CodaIcon,
@@ -243,10 +244,10 @@ export const SOURCE_METADATA_MAP: SourceMap = {
     isPopular: true,
   },
   jira_service_management: {
-    icon: JiraIcon,
+    icon: ServiceNowIcon,
     displayName: "Jira Service Management",
     category: SourceCategory.TicketingAndTaskManagement,
-    docs: `${DOCS_ADMINS_PATH}/connectors/official/jira-service-management`,
+    docs: `${DOCS_ADMINS_PATH}/connectors/official/jira`,
   },
   zendesk: {
     icon: ZendeskIcon,
