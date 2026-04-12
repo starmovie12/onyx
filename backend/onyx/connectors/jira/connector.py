@@ -9,7 +9,6 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 from typing import Any
-from typing import ClassVar
 
 import requests
 from jira import JIRA
@@ -494,11 +493,6 @@ class JiraConnector(
     CheckpointedConnectorWithPermSync[JiraConnectorCheckpoint],
     SlimConnectorWithPermSync,
 ):
-    # Subclasses can override this to change the EE permission-group prefix
-    # (e.g., "jira_service_management_" instead of "jira_") AND the document
-    # source assigned at creation time in process_jira_issue.
-    _source: ClassVar[DocumentSource] = DocumentSource.JIRA
-
     def __init__(
         self,
         jira_base_url: str,
@@ -570,33 +564,9 @@ class JiraConnector(
                 jira_client=self.jira_client,
                 jira_project=project_key,
                 add_prefix=add_prefix,
-                source=self._source,
+                source=DocumentSource.JIRA,
             )
         return self._project_permissions_cache[cache_key]
-
-    def _enrich_document(self, document: Document, _issue: Issue) -> Document:
-        """Extension point for subclasses to attach source-specific metadata.
-
-        Called once per issue after ``process_jira_issue`` returns a non-None
-        document and *before* the document is yielded to the caller.
-        ``JiraServiceManagementConnector`` overrides this to attach SLA data,
-        request type, and service desk ID without duplicating any pagination or
-        checkpoint logic.
-
-        The document's ``source`` is already set correctly by
-        ``process_jira_issue`` via the ``source=self._source`` argument, so
-        subclasses do not need to set it again here.
-
-        Args:
-            document: The fully-populated Document produced by process_jira_issue.
-            _issue: The raw Jira Issue object.  Prefixed with ``_`` in the base
-                implementation because it is intentionally unused here; subclasses
-                receive it as ``issue`` without the underscore.
-
-        Returns:
-            The (optionally mutated) Document to yield downstream.
-        """
-        return document
 
     def _is_epic(self, issue: Issue) -> bool:
         """Check if issue is an Epic."""
@@ -851,12 +821,8 @@ class JiraConnector(
                     comment_email_blacklist=self.comment_email_blacklist,
                     labels_to_skip=self.labels_to_skip,
                     parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
-                    source=self._source,
+                    source=DocumentSource.JIRA,
                 ):
-                    # Allow subclasses to attach source-specific metadata (e.g. SLA)
-                    # without duplicating any pagination / checkpoint logic.
-                    document = self._enrich_document(document, issue)
-
                     # Add permission information to the document if requested
                     if include_permissions:
                         document.external_access = self._get_project_permissions(
