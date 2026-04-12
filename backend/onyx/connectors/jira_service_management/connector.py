@@ -293,9 +293,9 @@ class JiraServiceManagementConnector(JiraConnector):
             scoped_token=scoped_token,
         )
         # Maps customfield_XXXXX → canonical metadata key (populated lazily).
-        # ``None`` means discovery has not yet been attempted; ``{}`` means
-        # discovery succeeded but found no SLA fields (or permanently failed
-        # after hitting the retry cap).
+        # ``None`` means discovery has not yet been attempted or is still
+        # retrying after a transient failure; ``{}`` means discovery succeeded
+        # but found no SLA fields on this instance.
         self._sla_field_map: dict[str, str] | None = None
 
         # Tracks how many times field discovery has been attempted so that
@@ -307,6 +307,12 @@ class JiraServiceManagementConnector(JiraConnector):
         # ``_ensure_fields_discovered``; ``None`` until discovery runs or
         # when the field does not exist on this instance.
         self._request_type_field_id: str | None = None
+
+        # Set to True once the discovery phase is fully complete (successfully
+        # or after permanently exhausting retries).  Used as the fast-path
+        # sentinel in ``_ensure_fields_discovered`` so that ``_sla_field_map``
+        # carries only its semantic meaning and does not double as a state flag.
+        self._fields_discovered: bool = False
 
     # ------------------------------------------------------------------
     # Field discovery
@@ -330,7 +336,11 @@ class JiraServiceManagementConnector(JiraConnector):
         directly after this call rather than using a return value.
         """
         # Fast-path: already discovered (successfully or permanently failed).
-        if self._sla_field_map is not None:
+        # Using a dedicated boolean rather than testing ``_sla_field_map is not
+        # None`` prevents the permanent-failure branch from inadvertently
+        # bypassing ``_discover_request_type_mapping`` just because it sets
+        # ``_sla_field_map = {}`` before returning.
+        if self._fields_discovered:
             return
 
         self._sla_discovery_attempts += 1
@@ -360,14 +370,17 @@ class JiraServiceManagementConnector(JiraConnector):
                     self._MAX_SLA_DISCOVERY_ATTEMPTS,
                     exc_info=True,
                 )
-                # Max attempts reached — cache empty map so all future calls
-                # hit the fast-path and make zero further API calls.
+                # Max attempts reached — cache empty map and mark discovery
+                # complete so all future calls hit the fast-path with zero
+                # further API calls.
                 self._sla_field_map = {}
+                self._fields_discovered = True
                 return
 
         # Each helper has its own failure scope — one cannot corrupt the other.
         self._discover_sla_mapping(all_fields)
         self._discover_request_type_mapping(all_fields)
+        self._fields_discovered = True
 
     def _discover_sla_mapping(self, all_fields: list[dict[str, Any]]) -> None:
         """Populate ``_sla_field_map`` from a pre-fetched field list.
@@ -395,7 +408,9 @@ class JiraServiceManagementConnector(JiraConnector):
             self._sla_field_map = mapping
         except Exception:
             logger.warning(
-                "JSM SLA field processing failed — SLA metadata may be incomplete.",
+                "JSM SLA field processing failed after caching %d field(s) — "
+                "SLA metadata may be incomplete.",
+                len(mapping),
                 exc_info=True,
             )
             # Cache the partial result so we don't retry the processing loop
@@ -483,7 +498,7 @@ class JiraServiceManagementConnector(JiraConnector):
         ``_ensure_fields_discovered`` call in ``_enrich_document``.
         """
         # Discovery already called by _enrich_document; use cached result.
-        sla_field_map = self._sla_field_map
+        sla_field_map: dict[str, str] | None = self._sla_field_map
         if sla_field_map is None:
             # Transient failure during this document's discovery attempt.
             logger.debug(
@@ -493,10 +508,6 @@ class JiraServiceManagementConnector(JiraConnector):
             )
             return
         if not sla_field_map:
-            logger.debug(
-                "SLA field map is empty; skipping SLA enrichment for %r.",
-                document.id,
-            )
             return
 
         for field_id, canonical_key in sla_field_map.items():
