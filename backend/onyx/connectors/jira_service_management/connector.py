@@ -378,9 +378,14 @@ class JiraServiceManagementConnector(JiraConnector):
                 return
 
         # Each helper has its own failure scope — one cannot corrupt the other.
-        self._discover_sla_mapping(all_fields)
-        self._discover_request_type_mapping(all_fields)
-        self._fields_discovered = True
+        # The finally block guarantees _fields_discovered is set even if an
+        # unhandled exception escapes from either helper, preventing the
+        # discovery loop from executing again on every subsequent document.
+        try:
+            self._discover_sla_mapping(all_fields)
+            self._discover_request_type_mapping(all_fields)
+        finally:
+            self._fields_discovered = True
 
     def _discover_sla_mapping(self, all_fields: list[dict[str, Any]]) -> None:
         """Populate ``_sla_field_map`` from a pre-fetched field list.
@@ -508,6 +513,11 @@ class JiraServiceManagementConnector(JiraConnector):
             )
             return
         if not sla_field_map:
+            logger.debug(
+                "SLA field map is empty (no SLA fields found on this instance); "
+                "skipping SLA enrichment for %r.",
+                document.id,
+            )
             return
 
         for field_id, canonical_key in sla_field_map.items():
