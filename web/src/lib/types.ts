@@ -19,7 +19,6 @@ export enum ThemePreference {
 }
 
 interface UserPreferences {
-  // TODO: rename to agent — https://linear.app/onyx-app/issue/ENG-3766
   chosen_assistants: number[] | null;
   visible_assistants: number[];
   hidden_assistants: number[];
@@ -565,6 +564,9 @@ export const federatedSourceToRegularSource = (
 export const validAutoSyncSources = [
   ValidSources.Confluence,
   ValidSources.Jira,
+  // JSM uses the same Atlassian EE permission-sync infrastructure as Jira
+  // (jira_group_sync + jira_service_management_doc_sync). Both are wired up
+  // in backend/ee/onyx/external_permissions/sync_params.py.
   ValidSources.JiraServiceManagement,
   ValidSources.GoogleDrive,
   ValidSources.Gmail,
