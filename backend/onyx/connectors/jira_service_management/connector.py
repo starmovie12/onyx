@@ -20,13 +20,12 @@ from typing import Any, ClassVar, Final
 from jira.resources import Issue
 from typing_extensions import override
 
+from onyx.configs.app_configs import INDEX_BATCH_SIZE
 from onyx.configs.constants import DocumentSource
 from onyx.connectors.jira.connector import (
-    FIELD_ISSUETYPE,  # noqa: F401 — re-exported for external consumers
     JIRA_CONNECTOR_LABELS_TO_SKIP,
     JiraConnector,
 )
-from onyx.configs.app_configs import INDEX_BATCH_SIZE
 from onyx.connectors.models import Document
 from onyx.utils.logger import setup_logger
 
