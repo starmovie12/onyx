@@ -4,8 +4,8 @@ Unit tests for the Jira Service Management connector.
 Coverage targets
 ----------------
 * Source tagging (all documents tagged with JIRA_SERVICE_MANAGEMENT)
-* Dynamic SLA field discovery â€” success, partial match, API failure, caching
-* SLA value extraction â€” Cloud nested dict, Server plain-string, breach flags,
+* Dynamic SLA field discovery — success, partial match, API failure, caching
+* SLA value extraction — Cloud nested dict, Server plain-string, breach flags,
   completed cycles, None / unknown shapes
 * Document enrichment via _enrich_document hook
 * JSM metadata (request type, service desk ID)
@@ -17,7 +17,7 @@ Note on imports of private helpers
 ``_extract_sla_display``, ``_get_raw_field``, ``_get_request_type``, and
 ``_get_service_desk_id`` are module-level private functions containing
 non-trivial logic that is important to verify in isolation.  Direct import
-is accepted in unit tests for the module that owns these helpers â€” the
+is accepted in unit tests for the module that owns these helpers — the
 alternative of testing only through ``_enrich_document`` would make each
 test significantly harder to read and debug.
 """
@@ -43,22 +43,9 @@ from onyx.connectors.models import TextSection
 from tests.unit.onyx.connectors.jira_service_management.conftest import make_mock_issue
 
 
-# ---------------------------------------------------------------------------
-# EE availability check â€” placed at the top so that Community Edition CI
-# environments skip the entire module cleanly during collection, before any
-# EE-dependent symbol is referenced at class-definition time.
-# ---------------------------------------------------------------------------
-
-_EE_DOC_SYNC_AVAILABLE = pytest.importorskip(
-    "ee.onyx.external_permissions.jira_service_management.doc_sync",
-    reason="EE module not available in this environment",
-    allow_module_level=True,
-)
-
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Module-level helpers shared across test classes
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _make_doc(doc_id: str = "https://example.atlassian.net/browse/HELP-1") -> Document:
@@ -90,16 +77,38 @@ def _call_validate_jsm_config(config: dict[str, Any]) -> None:
     _validate_jsm_config(config)
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # 1. Instantiation and source attribute
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestInstantiation:
-    def test_source_attribute_is_jsm(
+    def test_process_jira_issue_called_with_jsm_source(
         self, jsm_connector: JiraServiceManagementConnector
     ) -> None:
-        assert jsm_connector._source is DocumentSource.JIRA_SERVICE_MANAGEMENT
+        """The source passed to process_jira_issue must be JIRA_SERVICE_MANAGEMENT."""
+        from onyx.connectors.jira_service_management import connector as jsm_module
+        from unittest.mock import patch as mock_patch
+
+        mock_issue = make_mock_issue()
+        jsm_connector._jira_client._options = {"rest_api_version": "2"}
+        jsm_connector._jira_client.search_issues.return_value = [mock_issue]
+
+        with mock_patch.object(
+            jsm_module,
+            "process_jira_issue",
+            wraps=jsm_module.process_jira_issue,
+        ) as spy:
+            list(
+                jsm_connector.load_from_checkpoint(
+                    start=0,
+                    end=9_999_999_999,
+                    checkpoint=jsm_connector.build_dummy_checkpoint(),
+                )
+            )
+            if spy.call_count > 0:
+                _, kwargs = spy.call_args
+                assert kwargs.get("source") is DocumentSource.JIRA_SERVICE_MANAGEMENT
 
     def test_sla_field_map_starts_as_none(
         self, jsm_connector: JiraServiceManagementConnector
@@ -116,12 +125,17 @@ class TestInstantiation:
     ) -> None:
         assert jsm_connector._sla_discovery_attempts == 0
 
-    def test_inherits_from_jira_connector(
+    def test_implements_required_interfaces(
         self, jsm_connector: JiraServiceManagementConnector
     ) -> None:
+        """Connector must implement required interfaces and subclass JiraConnector."""
+        from onyx.connectors.interfaces import CheckpointedConnectorWithPermSync
+        from onyx.connectors.interfaces import SlimConnectorWithPermSync
         from onyx.connectors.jira.connector import JiraConnector
 
-        assert isinstance(jsm_connector, JiraConnector)
+        assert isinstance(jsm_connector, CheckpointedConnectorWithPermSync)
+        assert isinstance(jsm_connector, SlimConnectorWithPermSync)
+        assert isinstance(jsm_connector, JiraConnector)  # now TRUE after refactor
 
     def test_project_key_stored(
         self, jsm_connector: JiraServiceManagementConnector
@@ -133,10 +147,32 @@ class TestInstantiation:
     ) -> None:
         assert jsm_connector.jira_base == "https://example.atlassian.net"
 
+    def test_jsm_init_adds_sla_state(
+        self, jsm_connector: JiraServiceManagementConnector
+    ) -> None:
+        """Parent __init__ must run AND JSM SLA state must be initialized."""
+        # Parent state (from JiraConnector)
+        assert jsm_connector.jira_base == "https://example.atlassian.net"
+        assert jsm_connector.jira_project == "HELP"
+        # JSM-specific state
+        assert jsm_connector._sla_field_map is None
+        assert jsm_connector._sla_discovery_attempts == 0
+        assert jsm_connector._request_type_field_id is None
+        assert jsm_connector._fields_discovered is False
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# 2. Dynamic field discovery â€” _ensure_fields_discovered
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    def test_get_document_source_returns_jsm(
+        self, jsm_connector: JiraServiceManagementConnector
+    ) -> None:
+        """_get_document_source must return JIRA_SERVICE_MANAGEMENT."""
+        assert (
+            jsm_connector._get_document_source()
+            is DocumentSource.JIRA_SERVICE_MANAGEMENT
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Dynamic field discovery — _ensure_fields_discovered
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestSLAFieldDiscovery:
@@ -145,7 +181,7 @@ class TestSLAFieldDiscovery:
     ) -> None:
         mock_jira_client.fields.return_value = [
             _make_field_meta("customfield_10020", "Time to first response"),
-            _make_field_meta("summary", "Summary"),  # non-custom â€” must be ignored
+            _make_field_meta("summary", "Summary"),  # non-custom — must be ignored
         ]
         jsm_connector._ensure_fields_discovered()
         assert jsm_connector._sla_field_map == {
@@ -223,7 +259,7 @@ class TestSLAFieldDiscovery:
         jsm_connector._ensure_fields_discovered()
         second_map = jsm_connector._sla_field_map
 
-        # The API must be called exactly once â€” second call hits the fast-path.
+        # The API must be called exactly once — second call hits the fast-path.
         mock_jira_client.fields.assert_called_once()
         # Same dict object from cache (identity check, not just equality).
         assert first_map is second_map
@@ -267,10 +303,13 @@ class TestSLAFieldDiscovery:
         jsm_connector._ensure_fields_discovered()
         assert jsm_connector._request_type_field_id == "customfield_10010"
 
-    def test_sla_processing_failure_does_not_corrupt_request_type(
+    def test_sla_processing_failure_propagates_from_ensure(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
     ) -> None:
-        """A failure in _discover_sla_mapping must not corrupt _request_type_field_id."""
+        """Rule 2: helpers are called directly (no outer try/except).
+        A failure in _discover_sla_mapping propagates out of _ensure_fields_discovered.
+        The outer guard in _enrich_document catches it so no document is dropped,
+        but _ensure_fields_discovered itself re-raises."""
         mock_jira_client.fields.return_value = [
             _make_field_meta("customfield_10010", "Customer Request Type"),
         ]
@@ -279,10 +318,11 @@ class TestSLAFieldDiscovery:
             "_discover_sla_mapping",
             side_effect=RuntimeError("SLA processing error"),
         ):
-            jsm_connector._ensure_fields_discovered()
+            with pytest.raises(RuntimeError, match="SLA processing error"):
+                jsm_connector._ensure_fields_discovered()
 
-        # Request-type discovery ran independently and still succeeded.
-        assert jsm_connector._request_type_field_id == "customfield_10010"
+        # _fields_discovered stays False because the exception interrupted the flow.
+        assert jsm_connector._fields_discovered is False
 
     def test_single_api_call_regardless_of_both_helpers(
         self, jsm_connector: JiraServiceManagementConnector, mock_jira_client: MagicMock
@@ -296,9 +336,9 @@ class TestSLAFieldDiscovery:
         mock_jira_client.fields.assert_called_once()
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # 3. SLA value extraction (_extract_sla_display)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestExtractSLADisplay:
@@ -389,9 +429,9 @@ class TestExtractSLADisplay:
         assert breached is False
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# 4. Document enrichment â€” _enrich_document hook
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Document enrichment — _enrich_document hook
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestEnrichDocument:
@@ -479,7 +519,7 @@ class TestEnrichDocument:
         jsm_connector._sla_field_map = {
             "customfield_10020": "sla_time_to_first_response",
         }
-        # object() is not str or dict â€” _extract_sla_display returns (None, False).
+        # object() is not str or dict — _extract_sla_display returns (None, False).
         broken_sla = object()
         issue = make_mock_issue(extra_fields={"customfield_10020": broken_sla})
         doc = _make_doc()
@@ -521,9 +561,9 @@ class TestEnrichDocument:
         mock_jira_client.fields.assert_called_once()
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # 5. JSM metadata helpers
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestJSMMetadataHelpers:
@@ -533,7 +573,7 @@ class TestJSMMetadataHelpers:
 
     def test_get_raw_field_missing_returns_none(self) -> None:
         # spec=[] on issue.fields means undefined customfields raise AttributeError,
-        # which _get_raw_field's getattr(â€¦, None) catches and returns None.
+        # which _get_raw_field's getattr(…, None) catches and returns None.
         issue = make_mock_issue()
         assert _get_raw_field(issue, "customfield_99999") is None
 
@@ -545,7 +585,7 @@ class TestJSMMetadataHelpers:
         assert _get_request_type(issue) == "IT Support"
 
     def test_get_request_type_returns_none_when_name_is_none(self) -> None:
-        """If requestType.name is None, return None â€” not a Python object repr."""
+        """If requestType.name is None, return None — not a Python object repr."""
         issue = make_mock_issue()
         rt = MagicMock()
         rt.name = None
@@ -580,7 +620,7 @@ class TestJSMMetadataHelpers:
                 "customfield_10010": {"requestType": {"name": "Password Reset"}},
             }
         }
-        # No request_type_field_id provided â€” must return None even though the
+        # No request_type_field_id provided — must return None even though the
         # field exists in raw, because blind scanning is intentionally disabled.
         assert _get_request_type(issue) is None
 
@@ -591,7 +631,7 @@ class TestJSMMetadataHelpers:
 
     def test_get_service_desk_id_returns_string(self) -> None:
         issue = make_mock_issue()
-        issue.fields.serviceDeskId = 42  # numeric â€” must be stringified
+        issue.fields.serviceDeskId = 42  # numeric — must be stringified
         assert _get_service_desk_id(issue) == "42"
 
     def test_jsm_metadata_attached_to_document(
@@ -609,15 +649,24 @@ class TestJSMMetadataHelpers:
         assert result.metadata.get("jsm_service_desk_id") == "SD"
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# 6. doc_sync URL validation (P1 fix)
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. doc_sync URL validation (EE-only)
 #
-# Module-level pytest.importorskip already skips this entire file on Community
-# Edition; no class-level skipif is needed.
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Rule 4: pytest.importorskip is scoped INSIDE this class via an autouse
+# fixture so that CE tests (TestInstantiation, TestSLAFieldDiscovery, etc.)
+# run freely in Community Edition environments.
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestDocSyncURLValidation:
+    @pytest.fixture(autouse=True)
+    def _require_ee_module(self) -> None:  # type: ignore[return]
+        """Skip every test in this class if the EE doc_sync module is absent."""
+        pytest.importorskip(
+            "ee.onyx.external_permissions.jira_service_management.doc_sync",
+            reason="EE module not available in this environment",
+        )
+
     def test_valid_https_url_passes(self) -> None:
         _call_validate_jsm_config({"jira_base_url": "https://example.atlassian.net"})
 
@@ -655,9 +704,9 @@ class TestDocSyncURLValidation:
             _call_validate_jsm_config({"jira_base_url": 12345})
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# 7. Cloud SLA format â€” extended edge cases
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Cloud SLA format — extended edge cases
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestCloudSLAEdgeCases:
