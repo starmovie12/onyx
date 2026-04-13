@@ -830,7 +830,18 @@ export const connectorConfigs: Record<
         optional: true,
       },
     ],
-    advanced_values: [],
+    advanced_values: [
+      {
+        type: "list",
+        query: "Enter labels to skip:",
+        label: "Labels to Skip",
+        name: "labels_to_skip",
+        description:
+          "Tickets with any of these labels will not be indexed. " +
+          "Useful for excluding sensitive or internal-only tickets.",
+        optional: true,
+      },
+    ],
   },
   salesforce: {
     description: "Configure Salesforce connector",
@@ -2071,6 +2082,8 @@ export interface JiraServiceManagementConfig {
   jql_query?: string;
   /** Whether a scoped OAuth token is being used. */
   scoped_token?: boolean;
+  /** Labels that should cause tickets to be excluded from indexing. */
+  labels_to_skip?: string[];
   /**
    * Tab selection value from the indexing-scope form widget
    * ("everything" | "project" | "jql").  Sent by the form UI but not
