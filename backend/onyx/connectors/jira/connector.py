@@ -86,25 +86,6 @@ FIELD_UPDATED = "updated"
 FIELD_RESOLUTION_DATE = "resolutiondate"
 FIELD_RESOLUTION_DATE_KEY = "resolution_date"
 
-# Backward-compatible aliases (kept for any external consumers)
-_FIELD_REPORTER = FIELD_REPORTER
-_FIELD_ASSIGNEE = FIELD_ASSIGNEE
-_FIELD_PRIORITY = FIELD_PRIORITY
-_FIELD_STATUS = FIELD_STATUS
-_FIELD_RESOLUTION = FIELD_RESOLUTION
-_FIELD_LABELS = FIELD_LABELS
-_FIELD_KEY = FIELD_KEY
-_FIELD_CREATED = FIELD_CREATED
-_FIELD_DUEDATE = FIELD_DUEDATE
-_FIELD_ISSUETYPE = FIELD_ISSUETYPE
-_FIELD_PARENT = FIELD_PARENT
-_FIELD_ASSIGNEE_EMAIL = FIELD_ASSIGNEE_EMAIL
-_FIELD_REPORTER_EMAIL = FIELD_REPORTER_EMAIL
-_FIELD_PROJECT = FIELD_PROJECT
-_FIELD_PROJECT_NAME = FIELD_PROJECT_NAME
-_FIELD_UPDATED = FIELD_UPDATED
-_FIELD_RESOLUTION_DATE = FIELD_RESOLUTION_DATE
-_FIELD_RESOLUTION_DATE_KEY = FIELD_RESOLUTION_DATE_KEY
 
 
 def is_cloud_client(jira_client: JIRA) -> bool:
@@ -433,54 +414,54 @@ def process_jira_issue(
     metadata_dict: dict[str, str | list[str]] = {}
     people = set()
 
-    creator = best_effort_get_field_from_issue(issue, _FIELD_REPORTER)
+    creator = best_effort_get_field_from_issue(issue, FIELD_REPORTER)
     if creator is not None and (
         basic_expert_info := best_effort_basic_expert_info(creator)
     ):
         people.add(basic_expert_info)
-        metadata_dict[_FIELD_REPORTER] = basic_expert_info.get_semantic_name()
+        metadata_dict[FIELD_REPORTER] = basic_expert_info.get_semantic_name()
         if email := basic_expert_info.get_email():
-            metadata_dict[_FIELD_REPORTER_EMAIL] = email
+            metadata_dict[FIELD_REPORTER_EMAIL] = email
 
-    assignee = best_effort_get_field_from_issue(issue, _FIELD_ASSIGNEE)
+    assignee = best_effort_get_field_from_issue(issue, FIELD_ASSIGNEE)
     if assignee is not None and (
         basic_expert_info := best_effort_basic_expert_info(assignee)
     ):
         people.add(basic_expert_info)
-        metadata_dict[_FIELD_ASSIGNEE] = basic_expert_info.get_semantic_name()
+        metadata_dict[FIELD_ASSIGNEE] = basic_expert_info.get_semantic_name()
         if email := basic_expert_info.get_email():
-            metadata_dict[_FIELD_ASSIGNEE_EMAIL] = email
+            metadata_dict[FIELD_ASSIGNEE_EMAIL] = email
 
-    metadata_dict[_FIELD_KEY] = issue.key
-    if priority := best_effort_get_field_from_issue(issue, _FIELD_PRIORITY):
-        metadata_dict[_FIELD_PRIORITY] = priority.name
-    if status := best_effort_get_field_from_issue(issue, _FIELD_STATUS):
-        metadata_dict[_FIELD_STATUS] = status.name
-    if resolution := best_effort_get_field_from_issue(issue, _FIELD_RESOLUTION):
-        metadata_dict[_FIELD_RESOLUTION] = resolution.name
-    if labels := best_effort_get_field_from_issue(issue, _FIELD_LABELS):
-        metadata_dict[_FIELD_LABELS] = labels
-    if created := best_effort_get_field_from_issue(issue, _FIELD_CREATED):
-        metadata_dict[_FIELD_CREATED] = created
-    if updated := best_effort_get_field_from_issue(issue, _FIELD_UPDATED):
-        metadata_dict[_FIELD_UPDATED] = updated
-    if duedate := best_effort_get_field_from_issue(issue, _FIELD_DUEDATE):
-        metadata_dict[_FIELD_DUEDATE] = duedate
-    if issuetype := best_effort_get_field_from_issue(issue, _FIELD_ISSUETYPE):
-        metadata_dict[_FIELD_ISSUETYPE] = issuetype.name
+    metadata_dict[FIELD_KEY] = issue.key
+    if priority := best_effort_get_field_from_issue(issue, FIELD_PRIORITY):
+        metadata_dict[FIELD_PRIORITY] = priority.name
+    if status := best_effort_get_field_from_issue(issue, FIELD_STATUS):
+        metadata_dict[FIELD_STATUS] = status.name
+    if resolution := best_effort_get_field_from_issue(issue, FIELD_RESOLUTION):
+        metadata_dict[FIELD_RESOLUTION] = resolution.name
+    if labels := best_effort_get_field_from_issue(issue, FIELD_LABELS):
+        metadata_dict[FIELD_LABELS] = labels
+    if created := best_effort_get_field_from_issue(issue, FIELD_CREATED):
+        metadata_dict[FIELD_CREATED] = created
+    if updated := best_effort_get_field_from_issue(issue, FIELD_UPDATED):
+        metadata_dict[FIELD_UPDATED] = updated
+    if duedate := best_effort_get_field_from_issue(issue, FIELD_DUEDATE):
+        metadata_dict[FIELD_DUEDATE] = duedate
+    if issuetype := best_effort_get_field_from_issue(issue, FIELD_ISSUETYPE):
+        metadata_dict[FIELD_ISSUETYPE] = issuetype.name
     if resolutiondate := best_effort_get_field_from_issue(
-        issue, _FIELD_RESOLUTION_DATE
+        issue, FIELD_RESOLUTION_DATE
     ):
-        metadata_dict[_FIELD_RESOLUTION_DATE_KEY] = resolutiondate
+        metadata_dict[FIELD_RESOLUTION_DATE_KEY] = resolutiondate
 
-    parent = best_effort_get_field_from_issue(issue, _FIELD_PARENT)
+    parent = best_effort_get_field_from_issue(issue, FIELD_PARENT)
     if parent is not None:
-        metadata_dict[_FIELD_PARENT] = parent.key
+        metadata_dict[FIELD_PARENT] = parent.key
 
-    project = best_effort_get_field_from_issue(issue, _FIELD_PROJECT)
+    project = best_effort_get_field_from_issue(issue, FIELD_PROJECT)
     if project is not None:
-        metadata_dict[_FIELD_PROJECT_NAME] = project.name
-        metadata_dict[_FIELD_PROJECT] = project.key
+        metadata_dict[FIELD_PROJECT_NAME] = project.name
+        metadata_dict[FIELD_PROJECT] = project.key
     else:
         logger.error(f"Project should exist but does not for {issue.key}")
 
@@ -584,13 +565,13 @@ class JiraConnector(
                 jira_client=self.jira_client,
                 jira_project=project_key,
                 add_prefix=add_prefix,
-                source=DocumentSource.JIRA,
+                source=self._get_document_source(),
             )
         return self._project_permissions_cache[cache_key]
 
     def _is_epic(self, issue: Issue) -> bool:
         """Check if issue is an Epic."""
-        issuetype = best_effort_get_field_from_issue(issue, _FIELD_ISSUETYPE)
+        issuetype = best_effort_get_field_from_issue(issue, FIELD_ISSUETYPE)
         if issuetype is None:
             return False
         return issuetype.name.lower() == "epic"
@@ -693,7 +674,7 @@ class JiraConnector(
             - Epic key if issue's parent is an Epic
             - Project key otherwise (for top-level issues or non-epic parents)
         """
-        parent = best_effort_get_field_from_issue(issue, _FIELD_PARENT)
+        parent = best_effort_get_field_from_issue(issue, FIELD_PARENT)
         if parent is None:
             # No parent, directly under project
             return project_key
@@ -823,7 +804,7 @@ class JiraConnector(
             issue_key = issue.key
             try:
                 # Get project info for hierarchy
-                project = best_effort_get_field_from_issue(issue, _FIELD_PROJECT)
+                project = best_effort_get_field_from_issue(issue, FIELD_PROJECT)
                 project_key = project.key if project else None
                 project_name = project.name if project else None
 
@@ -835,7 +816,7 @@ class JiraConnector(
                     )
 
                     # 2. If parent is an Epic, yield hierarchy node for it
-                    parent = best_effort_get_field_from_issue(issue, _FIELD_PARENT)
+                    parent = best_effort_get_field_from_issue(issue, FIELD_PARENT)
                     if parent:
                         yield from self._yield_parent_hierarchy_node_if_epic(
                             parent, project_key, seen_hierarchy_node_ids
@@ -945,7 +926,7 @@ class JiraConnector(
                 ids_done=checkpoint.ids_done,
             ):
                 # Get project info
-                project = best_effort_get_field_from_issue(issue, _FIELD_PROJECT)
+                project = best_effort_get_field_from_issue(issue, FIELD_PROJECT)
                 project_key = project.key if project else None
                 project_name = project.name if project else None
 
@@ -960,7 +941,7 @@ class JiraConnector(
                     slim_doc_batch.append(node)
 
                 # 2. If parent is an Epic, yield hierarchy node for it
-                parent = best_effort_get_field_from_issue(issue, _FIELD_PARENT)
+                parent = best_effort_get_field_from_issue(issue, FIELD_PARENT)
                 if parent:
                     for node in self._yield_parent_hierarchy_node_if_epic(
                         parent, project_key, seen_hierarchy_node_ids
@@ -975,7 +956,7 @@ class JiraConnector(
                         slim_doc_batch.append(node)
 
                 # Now add the slim document
-                issue_key = best_effort_get_field_from_issue(issue, _FIELD_KEY)
+                issue_key = best_effort_get_field_from_issue(issue, FIELD_KEY)
                 doc_id = build_jira_url(self.jira_base, issue_key)
 
                 slim_doc_batch.append(
