@@ -100,18 +100,24 @@ def make_mock_issue(
 ) -> MagicMock:
     """Build a lightweight mock ``Issue`` object for use in unit tests.
 
-    ``issue.fields`` is created with a ``spec`` list containing every
-    attribute that is explicitly set below, plus any keys supplied via
-    ``extra_fields``.  This means:
+    ``issue.fields`` is created with a spec derived from a dynamically
+    generated class whose attributes exactly match the allow-list below.
+    This means:
 
     * All legitimate reads (``issue.fields.summary``, etc.) succeed because
-      the attribute name is in the spec.
+      the attribute name is declared on the spec class.
     * Any ``customfield_*`` that is NOT in ``extra_fields`` will raise
       ``AttributeError`` on read access, so ``getattr(issue.fields,
-      field_id, None)`` â€” the pattern used by ``_get_raw_field`` â€” correctly
+      field_id, None)`` — the pattern used by ``_get_raw_field`` — correctly
       returns ``None`` for missing fields instead of auto-creating a
       ``MagicMock`` that would silently attach garbage metadata to indexed
       documents.
+
+    Using ``type("_FieldsSpec", (), {...})`` instead of passing the list
+    directly to ``spec=`` ensures that MagicMock specs against the *class
+    attributes* (our field names) rather than against the Python ``list``
+    interface (``append``, ``pop``, etc.), which would be semantically
+    wrong and fragile across ``unittest.mock`` versions.
 
     All JSM-specific attributes (``serviceDeskId``, ``requestType``) are
     explicitly pinned to ``None`` so that ``getattr`` calls inside the
@@ -119,7 +125,7 @@ def make_mock_issue(
     ``MagicMock``.
 
     Any ``extra_fields`` are applied both to ``issue.raw["fields"]`` (for
-    paths that read from the raw dict) and as ``setattr(issue.fields, â€¦)``
+    paths that read from the raw dict) and as ``setattr(issue.fields, …)``
     (for paths that use attribute access), keeping both representations in
     sync.
     """
@@ -130,7 +136,7 @@ def make_mock_issue(
     #   - every attribute set below is reachable (no AttributeError on write
     #     or subsequent read), and
     #   - any customfield_* NOT in extra_fields still raises AttributeError,
-    #     keeping _get_raw_field's getattr(â€¦, None) semantics intact.
+    #     keeping _get_raw_field's getattr(…, None) semantics intact.
     allowed_fields: list[str] = [
         "summary",
         "description",
@@ -151,7 +157,13 @@ def make_mock_issue(
         "requestType",
         *(extra_fields.keys() if extra_fields else []),
     ]
-    issue.fields = MagicMock(spec=allowed_fields)
+
+    # FIX: Build a proper class so MagicMock specs against our field names,
+    # not against the Python list interface (append / pop / etc.).
+    # Each attribute is set to None as a neutral sentinel; MagicMock only
+    # uses the presence of the name on the class, not the value.
+    _FieldsSpec = type("_FieldsSpec", (), {f: None for f in allowed_fields})
+    issue.fields = MagicMock(spec=_FieldsSpec)
 
     issue.fields.summary = summary
     issue.fields.description = description
@@ -170,7 +182,7 @@ def make_mock_issue(
     issue.fields.project.key = project_key
     issue.fields.project.name = project_name
 
-    # reporter / assignee â€” minimal
+    # reporter / assignee — minimal
     issue.fields.reporter = MagicMock()
     issue.fields.reporter.displayName = "Reporter Name"
     issue.fields.reporter.emailAddress = "reporter@example.com"
