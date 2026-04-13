@@ -62,7 +62,7 @@ logger = setup_logger()
 ONE_HOUR = 3600
 
 _MAX_RESULTS_FETCH_IDS = 5000
-_JIRA_FULL_PAGE_SIZE = 50
+JIRA_FULL_PAGE_SIZE = 50
 # https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/
 _JIRA_BULK_FETCH_LIMIT = 100
 
@@ -87,11 +87,11 @@ _FIELD_RESOLUTION_DATE = "resolutiondate"
 _FIELD_RESOLUTION_DATE_KEY = "resolution_date"
 
 
-def _is_cloud_client(jira_client: JIRA) -> bool:
+def is_cloud_client(jira_client: JIRA) -> bool:
     return jira_client._options["rest_api_version"] == JIRA_CLOUD_API_VERSION
 
 
-def _perform_jql_search(
+def perform_jql_search(
     jira_client: JIRA,
     jql: str,
     start: int,
@@ -125,7 +125,7 @@ def _perform_jql_search(
     # it would be preferable to use one approach for both versions, but
     # v2 doesnt have the bulk fetch api and v3 has fully deprecated the search
     # api that v2 uses
-    if _is_cloud_client(jira_client):
+    if is_cloud_client(jira_client):
         if all_issue_ids is None:
             raise ValueError("all_issue_ids is required for v3")
         return _perform_jql_search_v3(
@@ -771,11 +771,11 @@ class JiraConnector(
 
         checkpoint_callback = make_checkpoint_callback(new_checkpoint)
 
-        for issue in _perform_jql_search(
+        for issue in perform_jql_search(
             jira_client=self.jira_client,
             jql=jql,
             start=current_offset,
-            max_results=_JIRA_FULL_PAGE_SIZE,
+            max_results=JIRA_FULL_PAGE_SIZE,
             all_issue_ids=new_checkpoint.all_issue_ids,
             checkpoint_callback=checkpoint_callback,
             nextPageToken=new_checkpoint.cursor,
@@ -848,7 +848,7 @@ class JiraConnector(
 
         # Update checkpoint
         self.update_checkpoint_for_next_run(
-            new_checkpoint, current_offset, starting_offset, _JIRA_FULL_PAGE_SIZE
+            new_checkpoint, current_offset, starting_offset, JIRA_FULL_PAGE_SIZE
         )
 
         return new_checkpoint
@@ -860,7 +860,7 @@ class JiraConnector(
         starting_offset: int,
         page_size: int,
     ) -> None:
-        if _is_cloud_client(self.jira_client):
+        if is_cloud_client(self.jira_client):
             # other updates done in the checkpoint callback
             checkpoint.has_more = (
                 len(checkpoint.all_issue_ids) > 0 or not checkpoint.ids_done
@@ -894,7 +894,7 @@ class JiraConnector(
         seen_hierarchy_node_ids: set[str] = set()
 
         while checkpoint.has_more:
-            for issue in _perform_jql_search(
+            for issue in perform_jql_search(
                 jira_client=self.jira_client,
                 jql=jql,
                 start=current_offset,
@@ -976,7 +976,7 @@ class JiraConnector(
                 # forcing evaluation of all results
                 next(
                     iter(
-                        _perform_jql_search(
+                        perform_jql_search(
                             jira_client=self.jira_client,
                             jql=self.jql_query,
                             start=0,
