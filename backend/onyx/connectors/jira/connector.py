@@ -67,24 +67,44 @@ JIRA_FULL_PAGE_SIZE = 50
 _JIRA_BULK_FETCH_LIMIT = 100
 
 # Constants for Jira field names
-_FIELD_REPORTER = "reporter"
-_FIELD_ASSIGNEE = "assignee"
-_FIELD_PRIORITY = "priority"
-_FIELD_STATUS = "status"
-_FIELD_RESOLUTION = "resolution"
-_FIELD_LABELS = "labels"
-_FIELD_KEY = "key"
-_FIELD_CREATED = "created"
-_FIELD_DUEDATE = "duedate"
-_FIELD_ISSUETYPE = "issuetype"
-_FIELD_PARENT = "parent"
-_FIELD_ASSIGNEE_EMAIL = "assignee_email"
-_FIELD_REPORTER_EMAIL = "reporter_email"
-_FIELD_PROJECT = "project"
-_FIELD_PROJECT_NAME = "project_name"
-_FIELD_UPDATED = "updated"
-_FIELD_RESOLUTION_DATE = "resolutiondate"
-_FIELD_RESOLUTION_DATE_KEY = "resolution_date"
+FIELD_REPORTER = "reporter"
+FIELD_ASSIGNEE = "assignee"
+FIELD_PRIORITY = "priority"
+FIELD_STATUS = "status"
+FIELD_RESOLUTION = "resolution"
+FIELD_LABELS = "labels"
+FIELD_KEY = "key"
+FIELD_CREATED = "created"
+FIELD_DUEDATE = "duedate"
+FIELD_ISSUETYPE = "issuetype"
+FIELD_PARENT = "parent"
+FIELD_ASSIGNEE_EMAIL = "assignee_email"
+FIELD_REPORTER_EMAIL = "reporter_email"
+FIELD_PROJECT = "project"
+FIELD_PROJECT_NAME = "project_name"
+FIELD_UPDATED = "updated"
+FIELD_RESOLUTION_DATE = "resolutiondate"
+FIELD_RESOLUTION_DATE_KEY = "resolution_date"
+
+# Backward-compatible aliases (kept for any external consumers)
+_FIELD_REPORTER = FIELD_REPORTER
+_FIELD_ASSIGNEE = FIELD_ASSIGNEE
+_FIELD_PRIORITY = FIELD_PRIORITY
+_FIELD_STATUS = FIELD_STATUS
+_FIELD_RESOLUTION = FIELD_RESOLUTION
+_FIELD_LABELS = FIELD_LABELS
+_FIELD_KEY = FIELD_KEY
+_FIELD_CREATED = FIELD_CREATED
+_FIELD_DUEDATE = FIELD_DUEDATE
+_FIELD_ISSUETYPE = FIELD_ISSUETYPE
+_FIELD_PARENT = FIELD_PARENT
+_FIELD_ASSIGNEE_EMAIL = FIELD_ASSIGNEE_EMAIL
+_FIELD_REPORTER_EMAIL = FIELD_REPORTER_EMAIL
+_FIELD_PROJECT = FIELD_PROJECT
+_FIELD_PROJECT_NAME = FIELD_PROJECT_NAME
+_FIELD_UPDATED = FIELD_UPDATED
+_FIELD_RESOLUTION_DATE = FIELD_RESOLUTION_DATE
+_FIELD_RESOLUTION_DATE_KEY = FIELD_RESOLUTION_DATE_KEY
 
 
 def is_cloud_client(jira_client: JIRA) -> bool:
@@ -758,6 +778,25 @@ class JiraConnector(
                 )
             raise e
 
+    def _get_document_source(self) -> DocumentSource:
+        """Return the DocumentSource for indexed documents.
+
+        Subclasses override this to tag documents with a different source
+        (e.g. JIRA_SERVICE_MANAGEMENT) without duplicating _load_from_checkpoint.
+        """
+        return DocumentSource.JIRA
+
+    def _enrich_document(self, document: Document, issue: Any) -> Document:
+        """Hook called after every successfully-processed issue document.
+
+        Base implementation is a no-op. Subclasses override to attach
+        source-specific metadata (e.g. SLA fields for JSM).
+
+        Must never raise — any failure must be caught internally and logged.
+        The document must always be returned.
+        """
+        return document
+
     def _load_from_checkpoint(
         self, jql: str, checkpoint: JiraConnectorCheckpoint, include_permissions: bool
     ) -> CheckpointOutput[JiraConnectorCheckpoint]:
@@ -821,10 +860,11 @@ class JiraConnector(
                     comment_email_blacklist=self.comment_email_blacklist,
                     labels_to_skip=self.labels_to_skip,
                     parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
-                    source=DocumentSource.JIRA,
+                    source=self._get_document_source(),
                 ):
+                    document = self._enrich_document(document, issue)
                     # Add permission information to the document if requested
-                    if include_permissions:
+                    if include_permissions and project_key:
                         document.external_access = self._get_project_permissions(
                             project_key,
                             add_prefix=True,  # Indexing path - prefix here
