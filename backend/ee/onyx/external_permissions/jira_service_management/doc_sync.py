@@ -78,7 +78,11 @@ def jira_service_management_doc_sync(
     _validate_jsm_config(connector_specific_config)
 
     jsm_connector = JiraServiceManagementConnector(
-        **connector_specific_config,
+        jira_base_url=connector_specific_config.get("jira_base_url", ""),
+        project_key=connector_specific_config.get("project_key"),
+        comment_email_blacklist=connector_specific_config.get("comment_email_blacklist"),
+        jql_query=connector_specific_config.get("jql_query"),
+        scoped_token=connector_specific_config.get("scoped_token", False),
     )
     credential_json = (
         cc_pair.credential.credential_json.get_value(apply_mask=False)
