@@ -7,6 +7,8 @@ in line with the Onyx contribution guideline:
   "Prefer composition and functional style over inheritance/OOP"
 """
 
+from __future__ import annotations
+
 import copy
 import re
 from collections.abc import Generator
@@ -799,9 +801,20 @@ class JiraServiceManagementConnector(
 
         try:
             self._discover_sla_mapping(all_fields)
+        except Exception:
+            logger.warning(
+                "JSM SLA mapping discovery failed — SLA metadata may be incomplete.",
+                exc_info=True,
+            )
+        try:
             self._discover_request_type_mapping(all_fields)
-        finally:
-            self._fields_discovered = True
+        except Exception:
+            logger.warning(
+                "JSM request-type mapping discovery failed — "
+                "request-type metadata may be omitted.",
+                exc_info=True,
+            )
+        self._fields_discovered = True
 
     def _discover_sla_mapping(self, all_fields: list[dict[str, Any]]) -> None:
         """Populate ``_sla_field_map`` from a pre-fetched field list."""
@@ -916,41 +929,3 @@ class JiraServiceManagementConnector(
         service_desk_id = _get_service_desk_id(issue)
         if service_desk_id:
             document.metadata[_META_SERVICE_DESK] = service_desk_id
-
-
-if __name__ == "__main__":
-    import os
-    from onyx.utils.variable_functionality import global_version
-    from tests.daily.connectors.utils import load_all_from_connector
-
-    # For connector permission testing, set EE to true.
-    global_version.set_ee()
-
-    connector = JiraServiceManagementConnector(
-        jira_base_url=os.environ["JSM_BASE_URL"],
-        project_key=os.environ.get("JSM_PROJECT_KEY"),
-        comment_email_blacklist=[],
-    )
-
-    connector.load_credentials(
-        {
-            "jira_user_email": os.environ["JSM_USER_EMAIL"],
-            "jira_api_token": os.environ["JSM_API_TOKEN"],
-        }
-    )
-
-    start = 0
-    end = datetime.now().timestamp()
-
-    for slim_doc in connector.retrieve_all_slim_docs_perm_sync(
-        start=start,
-        end=end,
-    ):
-        print(slim_doc)
-
-    for doc in load_all_from_connector(
-        connector=connector,
-        start=start,
-        end=end,
-    ).documents:
-        print(doc)
