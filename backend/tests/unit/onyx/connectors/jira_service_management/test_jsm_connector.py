@@ -24,9 +24,10 @@ test significantly harder to read and debug.
 
 from __future__ import annotations
 
+import onyx.connectors.jira.connector as jira_module
 from typing import Any
 from unittest.mock import MagicMock
-from unittest.mock import patch
+from unittest.mock import patch as mock_patch
 
 import pytest
 
@@ -86,18 +87,27 @@ class TestInstantiation:
     def test_process_jira_issue_called_with_jsm_source(
         self, jsm_connector: JiraServiceManagementConnector
     ) -> None:
-        """The source passed to process_jira_issue must be JIRA_SERVICE_MANAGEMENT."""
-        from onyx.connectors.jira_service_management import connector as jsm_module
-        from unittest.mock import patch as mock_patch
+        """process_jira_issue must be called with source=JIRA_SERVICE_MANAGEMENT.
 
+        FIX (was broken in 3 ways):
+        1. process_jira_issue lives in onyx.connectors.jira.connector (the base
+           module), NOT in the JSM module — patching the JSM module namespace
+           would have raised AttributeError at context-manager entry because the
+           function is never imported there.
+        2. wraps= must reference the function from the module being patched so
+           the real implementation is still exercised while the spy records calls.
+        3. The original ``if spy.call_count > 0`` guard let the test pass silently
+           even when the code path was never exercised.  Replaced with a hard
+           ``assert`` so the test fails loudly if no call is made.
+        """
         mock_issue = make_mock_issue()
         jsm_connector._jira_client._options = {"rest_api_version": "2"}
         jsm_connector._jira_client.search_issues.return_value = [mock_issue]
 
         with mock_patch.object(
-            jsm_module,
+            jira_module,
             "process_jira_issue",
-            wraps=jsm_module.process_jira_issue,
+            wraps=jira_module.process_jira_issue,
         ) as spy:
             list(
                 jsm_connector.load_from_checkpoint(
@@ -106,9 +116,16 @@ class TestInstantiation:
                     checkpoint=jsm_connector.build_dummy_checkpoint(),
                 )
             )
-            if spy.call_count > 0:
-                _, kwargs = spy.call_args
-                assert kwargs.get("source") is DocumentSource.JIRA_SERVICE_MANAGEMENT
+
+        # Hard assertion — the test must fail if process_jira_issue was never called.
+        assert spy.call_count > 0, (
+            "process_jira_issue was never called during load_from_checkpoint. "
+            "Either the mock issue was not processed or the code path changed."
+        )
+        _, kwargs = spy.call_args
+        assert kwargs.get("source") is DocumentSource.JIRA_SERVICE_MANAGEMENT, (
+            f"Expected source=JIRA_SERVICE_MANAGEMENT, got {kwargs.get('source')!r}"
+        )
 
     def test_sla_field_map_starts_as_none(
         self, jsm_connector: JiraServiceManagementConnector
@@ -313,7 +330,7 @@ class TestSLAFieldDiscovery:
         mock_jira_client.fields.return_value = [
             _make_field_meta("customfield_10010", "Customer Request Type"),
         ]
-        with patch.object(
+        with mock_patch.object(
             jsm_connector,
             "_discover_sla_mapping",
             side_effect=RuntimeError("SLA processing error"),
@@ -506,7 +523,7 @@ class TestEnrichDocument:
             "customfield_10020": "sla_time_to_first_response",
         }
         # customfield_10020 not in extra_fields and not accessible on issue.fields
-        # (because spec=[] prevents auto-creation)
+        # (because spec=_FieldsSpec prevents auto-creation of unknown attributes)
         issue = make_mock_issue()
         doc = _make_doc()
         result = jsm_connector._enrich_document(doc, issue)
@@ -572,8 +589,9 @@ class TestJSMMetadataHelpers:
         assert _get_raw_field(issue, "customfield_10020") == "2h"
 
     def test_get_raw_field_missing_returns_none(self) -> None:
-        # spec=[] on issue.fields means undefined customfields raise AttributeError,
-        # which _get_raw_field's getattr(…, None) catches and returns None.
+        # spec=_FieldsSpec on issue.fields means undefined customfields raise
+        # AttributeError, which _get_raw_field's getattr(…, None) catches and
+        # returns None.
         issue = make_mock_issue()
         assert _get_raw_field(issue, "customfield_99999") is None
 
