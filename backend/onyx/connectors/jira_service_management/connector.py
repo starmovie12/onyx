@@ -3,12 +3,13 @@ Jira Service Management (JSM) Connector.
 
 Subclasses JiraConnector, overriding only what is strictly JSM-specific:
   - _get_document_source(): returns JIRA_SERVICE_MANAGEMENT
-  - _get_project_permissions(): passes correct source for EE prefix
   - _enrich_document(): attaches SLA and JSM-specific metadata
   - __init__(): adds SLA discovery state variables
 
 All indexing, pagination, checkpoint, hierarchy, and permission logic
-is inherited from JiraConnector without duplication.
+is inherited from JiraConnector without duplication.  Permission
+prefixing uses the _get_document_source() hook in the base class, so
+no _get_project_permissions override is needed.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ from jira.resources import Issue
 from typing_extensions import override
 
 from onyx.configs.constants import DocumentSource
-from onyx.connectors.jira.access import get_project_permissions
 from onyx.connectors.jira.connector import (
     FIELD_ISSUETYPE,  # noqa: F401 — re-exported for external consumers
     JIRA_CONNECTOR_LABELS_TO_SKIP,
@@ -28,7 +28,6 @@ from onyx.connectors.jira.connector import (
 )
 from onyx.configs.app_configs import INDEX_BATCH_SIZE
 from onyx.connectors.models import Document
-from onyx.access.models import ExternalAccess
 from onyx.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -179,10 +178,10 @@ class JiraServiceManagementConnector(JiraConnector):
       - Hierarchy node generation
       - ADF parsing and comment handling
       - validate_connector_settings
+      - _get_project_permissions (now uses _get_document_source() hook)
 
     Overridden:
       - _get_document_source: returns JIRA_SERVICE_MANAGEMENT
-      - _get_project_permissions: uses correct EE permission prefix
       - _enrich_document: attaches SLA, request type, and service desk metadata
     """
 
@@ -220,21 +219,6 @@ class JiraServiceManagementConnector(JiraConnector):
     @override
     def _get_document_source(self) -> DocumentSource:
         return DocumentSource.JIRA_SERVICE_MANAGEMENT
-
-    @override
-    def _get_project_permissions(
-        self, project_key: str, add_prefix: bool = False
-    ) -> ExternalAccess | None:
-        """Get project permissions with JSM source for correct EE group prefix."""
-        cache_key = f"{project_key}:{'prefixed' if add_prefix else 'unprefixed'}"
-        if cache_key not in self._project_permissions_cache:
-            self._project_permissions_cache[cache_key] = get_project_permissions(
-                jira_client=self.jira_client,
-                jira_project=project_key,
-                add_prefix=add_prefix,
-                source=DocumentSource.JIRA_SERVICE_MANAGEMENT,
-            )
-        return self._project_permissions_cache[cache_key]
 
     @override
     def _enrich_document(self, document: Document, issue: Any) -> Document:
@@ -391,7 +375,7 @@ class JiraServiceManagementConnector(JiraConnector):
             else:
                 logger.debug(
                     "SLA field map is empty (no SLA fields found on this instance "
-                    "or discovery permanently failed).",
+                    "or discovery permanently failed); skipping SLA enrichment for %r.",
                     document.id,
                 )
             return
