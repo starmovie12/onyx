@@ -48,7 +48,7 @@ def _validate_jsm_config(connector_specific_config: dict[str, Any]) -> None:
 
 def jira_service_management_doc_sync(
     cc_pair: ConnectorCredentialPair,
-    fetch_all_existing_docs_fn: FetchAllDocumentsFunction,
+    fetch_all_existing_docs_fn: FetchAllDocumentsFunction,  # noqa: ARG001
     fetch_all_existing_docs_ids_fn: FetchAllDocumentsIdsFunction,
     callback: IndexingHeartbeatInterface | None = None,
 ) -> Generator[ElementExternalAccess, None, None]:
@@ -59,23 +59,16 @@ def jira_service_management_doc_sync(
     rather than cryptic failures deep in the permission-sync pipeline.
 
     Args:
-        cc_pair: The connectorâ€“credential pair for this sync run.
+        cc_pair: The connector-credential pair for this sync run.
         fetch_all_existing_docs_fn: Callable that returns all known documents
             for this connector.  Required by the ``DocSyncFuncType`` protocol
-            but not consumed on the JSM path â€” ``generic_doc_sync`` uses
+            but not consumed on the JSM path -- ``generic_doc_sync`` uses
             ``fetch_all_existing_docs_ids_fn`` instead.
         fetch_all_existing_docs_ids_fn: Callable that returns all known
             document IDs for this connector; used by ``generic_doc_sync`` to
             detect stale documents.
         callback: Optional heartbeat interface for long-running sync jobs.
     """
-    # ``fetch_all_existing_docs_fn`` is required by the DocSyncFuncType protocol
-    # but the JSM sync path delegates entirely to ``generic_doc_sync``, which
-    # uses ``fetch_all_existing_docs_ids_fn`` instead.  Binding to ``_`` makes
-    # it explicit to linters and reviewers that the omission is intentional,
-    # without suppressing linter warnings via noqa comments.
-    _ = fetch_all_existing_docs_fn
-
     connector_specific_config: dict[str, Any] = (
         cc_pair.connector.connector_specific_config
     )
@@ -87,14 +80,12 @@ def jira_service_management_doc_sync(
     jsm_connector = JiraServiceManagementConnector(
         **connector_specific_config,
     )
-    # Guard against credential_json being None or get_value returning None
-    # (e.g. when the credential store is empty).
-    raw_credential: dict[str, Any] = (
+    credential_json = (
         cc_pair.credential.credential_json.get_value(apply_mask=False)
         if cc_pair.credential.credential_json
         else {}
-    ) or {}
-    jsm_connector.load_credentials(raw_credential)
+    )
+    jsm_connector.load_credentials(credential_json)
     yield from generic_doc_sync(
         cc_pair=cc_pair,
         fetch_all_existing_docs_ids_fn=fetch_all_existing_docs_ids_fn,
