@@ -78,7 +78,7 @@ def jsm_connector(
     )
     connector._jira_client = mock_jira_client
     connector._jira_client.client_info = MagicMock(return_value=jsm_base_url)
-    with patch("onyx.connectors.jira.connector._JIRA_FULL_PAGE_SIZE", 2):
+    with patch("onyx.connectors.jira_service_management.connector.JIRA_FULL_PAGE_SIZE", 2):
         yield connector
 
 
