@@ -44,9 +44,9 @@ from onyx.connectors.jira.access import get_project_permissions
 from onyx.connectors.jira.connector import (
     JiraConnectorCheckpoint,
     ONE_HOUR,
-    _JIRA_FULL_PAGE_SIZE,
-    _perform_jql_search,
-    _is_cloud_client,
+    JIRA_FULL_PAGE_SIZE,
+    perform_jql_search,
+    is_cloud_client,
     make_checkpoint_callback,
     process_jira_issue,
 )
@@ -366,7 +366,7 @@ class JiraServiceManagementConnector(
             try:
                 next(
                     iter(
-                        _perform_jql_search(
+                        perform_jql_search(
                             jira_client=self.jira_client,
                             jql=self.jql_query,
                             start=0,
@@ -438,7 +438,7 @@ class JiraServiceManagementConnector(
         starting_offset: int,
         page_size: int,
     ) -> None:
-        if _is_cloud_client(self.jira_client):
+        if is_cloud_client(self.jira_client):
             checkpoint.has_more = (
                 len(checkpoint.all_issue_ids) > 0 or not checkpoint.ids_done
             )
@@ -562,11 +562,11 @@ class JiraServiceManagementConnector(
 
         checkpoint_callback = make_checkpoint_callback(new_checkpoint)
 
-        for issue in _perform_jql_search(
+        for issue in perform_jql_search(
             jira_client=self.jira_client,
             jql=jql,
             start=current_offset,
-            max_results=_JIRA_FULL_PAGE_SIZE,
+            max_results=JIRA_FULL_PAGE_SIZE,
             all_issue_ids=new_checkpoint.all_issue_ids,
             checkpoint_callback=checkpoint_callback,
             nextPageToken=new_checkpoint.cursor,
@@ -610,7 +610,7 @@ class JiraServiceManagementConnector(
                 ):
                     document = self._enrich_document(document, issue)
 
-                    if include_permissions:
+                    if include_permissions and project_key:
                         document.external_access = self._get_project_permissions(
                             project_key,
                             add_prefix=True,
@@ -632,7 +632,7 @@ class JiraServiceManagementConnector(
         new_checkpoint.seen_hierarchy_node_ids = list(seen_hierarchy_node_ids)
 
         self.update_checkpoint_for_next_run(
-            new_checkpoint, current_offset, starting_offset, _JIRA_FULL_PAGE_SIZE
+            new_checkpoint, current_offset, starting_offset, JIRA_FULL_PAGE_SIZE
         )
 
         return new_checkpoint
@@ -694,7 +694,7 @@ class JiraServiceManagementConnector(
         seen_hierarchy_node_ids: set[str] = set()
 
         while checkpoint.has_more:
-            for issue in _perform_jql_search(
+            for issue in perform_jql_search(
                 jira_client=self.jira_client,
                 jql=jql,
                 start=current_offset,
@@ -799,21 +799,8 @@ class JiraServiceManagementConnector(
                 self._fields_discovered = True
                 return
 
-        try:
-            self._discover_sla_mapping(all_fields)
-        except Exception:
-            logger.warning(
-                "JSM SLA mapping discovery failed — SLA metadata may be incomplete.",
-                exc_info=True,
-            )
-        try:
-            self._discover_request_type_mapping(all_fields)
-        except Exception:
-            logger.warning(
-                "JSM request-type mapping discovery failed — "
-                "request-type metadata may be omitted.",
-                exc_info=True,
-            )
+        self._discover_sla_mapping(all_fields)
+        self._discover_request_type_mapping(all_fields)
         self._fields_discovered = True
 
     def _discover_sla_mapping(self, all_fields: list[dict[str, Any]]) -> None:
