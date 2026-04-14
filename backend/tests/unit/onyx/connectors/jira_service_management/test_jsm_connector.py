@@ -71,7 +71,7 @@ def _call_validate_jsm_config(config: dict[str, Any]) -> None:
         from ee.onyx.external_permissions.jira_service_management.doc_sync import (
             _validate_jsm_config,
         )
-    except ImportError:
+    except ModuleNotFoundError:
         pytest.skip("EE module not available in this environment")
         return
 
