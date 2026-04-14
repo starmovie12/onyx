@@ -22,7 +22,7 @@ aiolimiter==1.2.1
     # via voyageai
 aiosignal==1.4.0
     # via aiohttp
-alembic==1.10.4
+alembic==1.18.4
     # via pytest-alembic
 annotated-doc==0.0.4
     # via fastapi
@@ -95,7 +95,7 @@ comm==0.2.3
     # via ipykernel
 contourpy==1.3.3
     # via matplotlib
-cryptography==46.0.6
+cryptography==46.0.7
     # via
     #   google-auth
     #   pyjwt
