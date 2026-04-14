@@ -15,7 +15,6 @@ no _get_project_permissions override is needed.
 from __future__ import annotations
 
 import re
-import time
 from typing import Any, ClassVar, Final
 
 from jira.resources import Issue
@@ -270,31 +269,20 @@ class JiraServiceManagementConnector(JiraConnector):
         try:
             all_fields: list[dict[str, Any]] = self.jira_client.fields()
         except Exception as e:
-            if getattr(e, "status_code", None) == 429:
-                self._sla_discovery_attempts += 1
-                logger.warning(
-                    "JSM field discovery rate-limited (429); "
-                    "backing off 30 s (attempt %d/%d).",
-                    self._sla_discovery_attempts,
-                    self._MAX_SLA_DISCOVERY_ATTEMPTS,
-                )
-                time.sleep(30)
-                return
-
-            # Non-429: consume one retry slot.
             self._sla_discovery_attempts += 1
+            is_rate_limited = getattr(e, "status_code", None) == 429
             if self._sla_discovery_attempts < self._MAX_SLA_DISCOVERY_ATTEMPTS:
                 logger.warning(
-                    "JSM field fetch failed (attempt %d/%d) — will retry.",
+                    "JSM field fetch %s (attempt %d/%d) — will retry.",
+                    "rate-limited (429)" if is_rate_limited else "failed",
                     self._sla_discovery_attempts,
                     self._MAX_SLA_DISCOVERY_ATTEMPTS,
-                    exc_info=True,
+                    exc_info=not is_rate_limited,
                 )
-                return
+                return   # no sleep — next document will retry
             else:
                 logger.warning(
-                    "JSM field fetch failed (attempt %d/%d) — "
-                    "SLA enrichment permanently disabled for this run.",
+                    "JSM field fetch failed %d/%d times — SLA enrichment permanently disabled.",
                     self._sla_discovery_attempts,
                     self._MAX_SLA_DISCOVERY_ATTEMPTS,
                     exc_info=True,
