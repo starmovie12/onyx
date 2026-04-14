@@ -15,17 +15,15 @@ no _get_project_permissions override is needed.
 from __future__ import annotations
 
 import re
+import time
 from typing import Any, ClassVar, Final
 
 from jira.resources import Issue
 from typing_extensions import override
 
-from onyx.configs.app_configs import INDEX_BATCH_SIZE
+from onyx.configs.app_configs import INDEX_BATCH_SIZE, JIRA_CONNECTOR_LABELS_TO_SKIP
 from onyx.configs.constants import DocumentSource
-from onyx.connectors.jira.connector import (
-    JIRA_CONNECTOR_LABELS_TO_SKIP,
-    JiraConnector,
-)
+from onyx.connectors.jira.connector import JiraConnector
 from onyx.connectors.models import Document
 from onyx.utils.logger import setup_logger
 
@@ -273,11 +271,15 @@ class JiraServiceManagementConnector(JiraConnector):
             all_fields: list[dict[str, Any]] = self.jira_client.fields()
         except Exception as e:
             if getattr(e, "status_code", None) == 429:
+                self._sla_discovery_attempts += 1
                 logger.warning(
                     "JSM field discovery rate-limited (429); "
-                    "will retry without consuming attempts."
+                    "backing off 30 s (attempt %d/%d).",
+                    self._sla_discovery_attempts,
+                    self._MAX_SLA_DISCOVERY_ATTEMPTS,
                 )
-                return  # Do NOT touch _sla_discovery_attempts
+                time.sleep(30)
+                return
 
             # Non-429: consume one retry slot.
             self._sla_discovery_attempts += 1
