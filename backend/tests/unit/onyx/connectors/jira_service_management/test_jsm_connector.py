@@ -24,12 +24,13 @@ test significantly harder to read and debug.
 
 from __future__ import annotations
 
-import onyx.connectors.jira.connector as jira_module
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch as mock_patch
 
 import pytest
+
+import onyx.connectors.jira.connector as jira_module
 
 from onyx.configs.constants import DocumentSource
 from onyx.connectors.jira_service_management.connector import _extract_sla_display
