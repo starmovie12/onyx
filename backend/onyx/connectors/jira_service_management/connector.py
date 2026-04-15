@@ -265,13 +265,14 @@ class JiraServiceManagementConnector(JiraConnector):
         if self._fields_discovered:
             return
 
-        # ---- Rule 1: 429 check happens BEFORE incrementing attempts ----
+        # ---- Rule 1: do NOT count 429s against the attempt cap ----
         try:
             all_fields: list[dict[str, Any]] = self.jira_client.fields()
         except Exception as e:
-            self._sla_discovery_attempts += 1
             is_rate_limited = getattr(e, "status_code", None) == 429
-            if self._sla_discovery_attempts < self._MAX_SLA_DISCOVERY_ATTEMPTS:
+            if not is_rate_limited:
+                self._sla_discovery_attempts += 1
+            if is_rate_limited or self._sla_discovery_attempts < self._MAX_SLA_DISCOVERY_ATTEMPTS:
                 logger.warning(
                     "JSM field fetch %s (attempt %d/%d) — will retry.",
                     "rate-limited (429)" if is_rate_limited else "failed",
