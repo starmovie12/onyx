@@ -1971,8 +1971,6 @@ export function createConnectorValidationSchema(
 
   return object;
 }
-
-export const defaultPruneFreqHours = 720; // 30 days in hours
 export const defaultRefreshFreqMinutes = 30; // 30 minutes
 
 // CONNECTORS
